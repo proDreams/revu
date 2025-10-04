@@ -21,7 +21,10 @@ class GithubPort(GitProviderProtocol):
     async def fetch_diff(self, repo: str, index: int) -> str:
         diff_url = f"https://api.github.com/repos/{repo}/pulls/{index}.diff"
 
-        return await self.http_client.get(url=diff_url, headers=self._get_headers(), expect_json=False)
+        headers = self._get_headers()
+        headers["Accept"] = "application/vnd.github.v3.diff"
+
+        return await self.http_client.get(url=diff_url, headers=headers, expect_json=False)
 
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
         comment_url = f"https://api.github.com/repos/{repo_owner}/issues/{index}/comments"

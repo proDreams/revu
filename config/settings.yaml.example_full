@@ -26,7 +26,7 @@ AI_PROVIDER_CONFIG:
   AI_PROVIDER_MODEL: "gpt-4.1-mini"
 
 # HTTP_CLIENT_TIMEOUT — how long to wait (in seconds) before HTTP requests fail
-HTTP_CLIENT_TIMEOUT: 10.0
+HTTP_CLIENT_TIMEOUT: 30.0
 # HTTP_CLIENT_REQUEST_ATTEMPTS — number of retry attempts if HTTP request fails
 HTTP_CLIENT_REQUEST_ATTEMPTS: 3
 
