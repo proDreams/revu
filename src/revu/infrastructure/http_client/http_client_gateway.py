@@ -38,29 +38,25 @@ class HttpClientGateway(Singleton):
                     headers=headers,
                 )
 
-                if resp.status_code == 429 or 500 <= resp.status_code < 600:
-                    raise HttpGatewayError(f"HTTP {resp.status_code} from {url}")
+                if resp.is_error:
+                    logger.warning("HTTP %s from %s: %s", resp.status_code, url, resp.text)
+                    raise HttpGatewayError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}")
 
                 if expect_json:
                     if resp.content:
                         try:
-                            payload = resp.json()
+                            return resp.json()
                         except Exception:
-                            resp.raise_for_status()
+                            logger.error("Non-JSON response: %s", resp.text)
                             raise HttpGatewayError(f"Non-JSON response from {url}: {resp.text[:300]}")
-                    else:
-                        payload = None
-
-                    resp.raise_for_status()
-                    return payload
+                    return None
                 else:
-                    resp.raise_for_status()
                     return resp.content
+
             except (httpx.TransportError, HttpGatewayError) as e:
                 logger.warning(f"http error: {e}")
                 if i < attempts - 1:
                     continue
-
                 raise HTTPGatewayAttemptLimitExceeded()
 
         return None
