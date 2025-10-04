@@ -15,9 +15,9 @@ logger = get_logger(name=__name__)
 
 class HttpClientGateway(Singleton):
     def __init__(self) -> None:
-        self.timeout = get_settings().HTTP_CLIENT_TIMEOUT or 30.0
+        self.timeout = get_settings().HTTP_CLIENT_TIMEOUT
         self._client = httpx.AsyncClient(timeout=self.timeout)
-        self.attempts = get_settings().HTTP_CLIENT_REQUEST_ATTEMPTS or 3
+        self.attempts = get_settings().HTTP_CLIENT_REQUEST_ATTEMPTS
 
     async def _request(
         self,

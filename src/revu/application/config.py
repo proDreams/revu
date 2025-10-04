@@ -6,7 +6,19 @@ from revu.infrastructure.logger.project_logger import ProjectLogger
 
 
 class Config:
-    settings = Dynaconf(settings_files=["config/settings.yaml"], validators=[Validator("SYSTEM_PROMPT", default=None)])
+    settings = Dynaconf(
+        settings_files=["config/settings.yaml"],
+        validators=[
+            Validator("SYSTEM_PROMPT", default=None),
+            Validator("LOG_DIR", default="logs"),
+            Validator("LOG_FILE", default="logs.txt"),
+            Validator("LOG_LEVEL", default="INFO"),
+            Validator("MAX_SIZE_MB", default=10, cast=int),
+            Validator("BACKUP_COUNT", default=5, cast=int),
+            Validator("HTTP_CLIENT_TIMEOUT", default=30.0, cast=float),
+            Validator("HTTP_CLIENT_REQUEST_ATTEMPTS", default=3, cast=int),
+        ],
+    )
     logger = ProjectLogger(settings=settings)
 
 
