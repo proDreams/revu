@@ -17,7 +17,7 @@ class HttpClientGateway(Singleton):
     def __init__(self) -> None:
         self.timeout = get_settings().HTTP_CLIENT_TIMEOUT or 10.0
         self._client = httpx.AsyncClient(timeout=self.timeout)
-        self.attempts = get_settings().HTTP_CLIENT_REQUEST_ATTEMPTS
+        self.attempts = get_settings().HTTP_CLIENT_REQUEST_ATTEMPTS or 3
 
     async def _request(
         self,

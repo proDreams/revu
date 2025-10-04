@@ -17,14 +17,27 @@ GIT_PROVIDER_CONFIG:
 
 AI_PROVIDER_CONFIG:
   # AI_PROVIDER — which AI API you use:
-  # "openai" (official Responses API)
-  # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
+  # "openai"
+  # "openai_compatible" (openrouter, lmstudio, etc...)
   AI_PROVIDER: "openai"
   # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
   AI_PROVIDER_API_KEY: "aasdasdasd"
   # AI_PROVIDER_MODEL — which model to use for code review (gpt-4.1-mini, gpt-4o, gpt-3.5-turbo, etc...)
   AI_PROVIDER_MODEL: "gpt-4.1-mini"
 
+# HTTP_CLIENT_TIMEOUT — how long to wait (in seconds) before HTTP requests fail
+HTTP_CLIENT_TIMEOUT: 10.0
+# HTTP_CLIENT_REQUEST_ATTEMPTS — number of retry attempts if HTTP request fails
+HTTP_CLIENT_REQUEST_ATTEMPTS: 3
+
 # logger
+# LOG_DIR — directory where log files will be stored
+LOG_DIR: "logs"
+# LOG_FILE — file name for logs
+LOG_FILE: "logs.txt"
 # LOG_LEVEL — log detail level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 LOG_LEVEL: "INFO"
+# MAX_SIZE_MB — max size of each log file before rotation (in megabytes)
+MAX_SIZE_MB: 10
+# BACKUP_COUNT — how many old rotated log files to keep
+BACKUP_COUNT: 5
