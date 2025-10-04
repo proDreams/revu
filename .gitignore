@@ -1,0 +1,7 @@
+.env
+.idea
+__pycache__
+logs/
+settings.yaml
+.coverage
+revu_logs/

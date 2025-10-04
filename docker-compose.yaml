@@ -1,0 +1,9 @@
+services:
+  revu:
+    image: ghcr.io/prodreams/revu:latest
+    container_name: revu
+    restart: always
+    command: make run_prod
+    volumes:
+      - ./revu_logs:/code/logs
+      - ./settings.yaml:/code/config/settings.yaml

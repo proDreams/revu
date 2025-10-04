@@ -1,0 +1,33 @@
+[project]
+name = "revu"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "dynaconf>=3.2.11",
+    "fastapi[standard]>=0.118.0",
+    "hatchling>=1.27.0",
+    "httpx>=0.28.1",
+    "openai>=2.0.1",
+    "unidiff>=0.7.5",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.13.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/revu"]
+
+[project.scripts]
+app = "revu.runner:run"
+
+[tool.ruff]
+line-length = 120
+indent-width = 4

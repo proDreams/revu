@@ -1,0 +1,26 @@
+
+#REVIEW_MODE: "comment"
+REVIEW_MODE: "inline"
+
+GIT_PROVIDER_CONFIG:
+  GIT_PROVIDER: "gitea"
+  GIT_PROVIDER_USER_TOKEN: "asdasdasd"
+  GIT_PROVIDER_URL: "https://git.pressanybutton.ru"
+  GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
+
+AI_PROVIDER_CONFIG:
+  AI_PROVIDER: "openai"
+  AI_PROVIDER_API_KEY: "sk-asdasdasd"
+
+  AI_PROVIDER_MODEL: "gpt-4.1-mini"
+
+HTTP_CLIENT_TIMEOUT: 10.0
+HTTP_CLIENT_REQUEST_ATTEMPTS: 3
+
+# logger
+LOG_DIR: "logs"
+LOG_FILE: "logs.txt"
+LOG_LEVEL: "INFO"  # (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+MAX_SIZE_MB: 10
+BACKUP_COUNT: 5
+PRE_REGISTERED_LOGGERS: [ "uvicorn" ]

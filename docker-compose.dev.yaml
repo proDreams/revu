@@ -1,0 +1,11 @@
+services:
+  revu:
+    build: .
+    container_name: revu
+    restart: always
+    command: make run_prod
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./revu_logs:/code/logs
+      - ./config/settings.yaml:/code/config/settings.yaml
