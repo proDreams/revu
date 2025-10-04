@@ -16,7 +16,7 @@ class PullRequest(BaseModel):
     diff_url: HttpUrl
     head: Branch
     title: str
-    body: str
+    body: str | None = None
 
 
 class GithubPullRequestWebhook(BaseModel):
