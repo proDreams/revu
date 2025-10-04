@@ -1,0 +1,62 @@
+name: Lint Project
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  lint:
+    env:
+      CACHE_DIR: ~/.cache
+      PRE_COMMIT_HOME: ~/.cache/pre-commit
+      UV_CACHE_DIR: ~/.cache/uv
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache uv cache-dir
+        id: cache-uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Cache pre-commit hooks
+        id: cache-pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ runner.os }}-pre-commit-cache-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pre-commit-cache-
+
+      - id: setup-uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.13
+          enable-cache: false
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --frozen
+          uv run pre-commit install
+
+      - name: Lint pre-commit
+        run: uv run pre-commit run --all-files --hook-stage manual
+
+      - name: Run Telegram Notify Action
+        uses: proDreams/actions-telegram-notifier@main
+        if: always()
+        with:
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          chat_id: ${{ secrets.TELEGRAM_CHAT_ID }}
+          thread_id: ${{ secrets.TELEGRAM_THREAD_ID }}
+          status: ${{ job.status }}
+          notify_fields: "actor,repository,branch,commit"
+          message: "Job: pre-commit linters"

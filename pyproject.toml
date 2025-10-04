@@ -1,7 +1,10 @@
 [project]
 name = "revu"
-version = "0.1.0"
+version = "1.0.0"
 description = "Add your description here"
+authors = [
+    { name = "proDream", email = "sushkoos@gmail.com" }
+]
 requires-python = ">=3.12"
 dependencies = [
     "dynaconf>=3.2.11",

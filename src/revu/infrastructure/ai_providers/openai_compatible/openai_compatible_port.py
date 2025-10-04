@@ -5,6 +5,7 @@ from openai.types.chat import (
 
 from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
+    COMMENT_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
 )
@@ -38,7 +39,9 @@ class OpenAICompatiblePort(AIProviderProtocol):
         return messages
 
     async def get_comment_response(self, diff: str) -> str:
-        output = await self.adapter.get_chat_response(messages=self._get_messages(prompt=self.system_prompt, diff=diff))
+        output = await self.adapter.get_chat_response(
+            messages=self._get_messages(prompt=self.system_prompt or COMMENT_PROMPT, diff=diff)
+        )
 
         return output.choices[0].message.content
 

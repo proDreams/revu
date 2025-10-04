@@ -9,9 +9,9 @@ logger = get_logger(name=__name__)
 
 def run_app():
     app = FastAPI(
-        # docs_url=None,
-        # redoc_url=None,
-        # openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
 
     app.include_router(webhooks_router)

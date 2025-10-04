@@ -1,5 +1,6 @@
 from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
+    COMMENT_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
 )
@@ -22,7 +23,9 @@ class OpenAIPort(AIProviderProtocol):
         self.system_prompt = get_settings().SYSTEM_PROMPT
 
     async def get_comment_response(self, diff: str) -> str:
-        output = await self.adapter.get_chat_response(user_input=diff, instructions=self.system_prompt)
+        output = await self.adapter.get_chat_response(
+            user_input=diff, instructions=self.system_prompt or COMMENT_PROMPT
+        )
 
         return output.output_parsed
 

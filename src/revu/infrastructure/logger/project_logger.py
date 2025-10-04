@@ -7,12 +7,13 @@ from dynaconf import Dynaconf
 
 class ProjectLogger:
     def __init__(self, settings: Dynaconf):
-        self.log_dir = Path(settings.LOG_DIR)
-        self.log_file = self.log_dir / settings.LOG_FILE
-        self.log_level = settings.LOG_LEVEL
-        self.max_log_size = settings.MAX_SIZE_MB
-        self.backup_count = settings.BACKUP_COUNT
-        self.pre_registered_loggers = settings.PRE_REGISTERED_LOGGERS
+        self.log_dir = settings.LOG_DIR or "logs"
+        self.log_path = Path(self.log_dir)
+        self.log_file = self.log_path / (settings.LOG_FILE or "logs.txt")
+        self.log_level = settings.LOG_LEVEL or "INFO"
+        self.max_log_size = settings.MAX_SIZE_MB or 10
+        self.backup_count = settings.BACKUP_COUNT or 5
+        self.pre_registered_loggers = ["uvicorn", "httpx"]
 
         self._setup_logging_directory()
 
@@ -20,7 +21,7 @@ class ProjectLogger:
             self.get_logger(logger_name)
 
     def _setup_logging_directory(self):
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_path.mkdir(parents=True, exist_ok=True)
 
     def _get_console_handler(self) -> logging.Handler:
         console_handler = logging.StreamHandler()
