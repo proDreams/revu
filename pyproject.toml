@@ -5,7 +5,7 @@ description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "dynaconf>=3.2.11",
     "fastapi[standard]>=0.118.0",
