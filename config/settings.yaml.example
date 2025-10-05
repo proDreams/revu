@@ -24,6 +24,9 @@ AI_PROVIDER_CONFIG:
   AI_PROVIDER_API_KEY: "aasdasdasd"
   # AI_PROVIDER_MODEL — which model to use for code review (gpt-4.1-mini, gpt-4o, gpt-3.5-turbo, etc...)
   AI_PROVIDER_MODEL: "gpt-4.1-mini"
+  # AI_PROVIDER_BASE_URL — base URL for OpenAI-compatible providers
+  # (useful when you run your own LLM API or use third-party endpoints like OpenRouter, LocalAI, LM Studio, etc.)
+  AI_PROVIDER_BASE_URL: "https://example.com/v1"
 
 # logger
 # LOG_LEVEL — log detail level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
