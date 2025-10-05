@@ -1,7 +1,7 @@
 [project]
 name = "revu"
-version = "1.0.0"
-description = "Add your description here"
+version = "1.1.0"
+description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
 ]
@@ -18,7 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.3.0",
-    "ruff>=0.13.2",
+    "ruff>=0.13.3",
 ]
 
 [build-system]

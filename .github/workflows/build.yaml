@@ -74,6 +74,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep '^version =' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -92,7 +98,7 @@ jobs:
           cache-to: type=inline
           tags: |
             ghcr.io/prodreams/revu:latest
-            ghcr.io/prodreams/revu:${{ github.sha }}
+            ghcr.io/prodreams/revu:${{ steps.get_version.outputs.version }}
 
 
       - name: Run Telegram Notify Action

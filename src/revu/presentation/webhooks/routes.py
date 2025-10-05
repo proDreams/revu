@@ -6,6 +6,7 @@ from starlette import status
 
 from revu.application.services.webhook_service import WebhookService
 from revu.presentation.webhooks.di import get_webhook_service
+from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain
 from revu.presentation.webhooks.schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
@@ -21,7 +22,8 @@ async def github_webhook(
     background_tasks: BackgroundTasks,
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
-    background_tasks.add_task(service.process_webhook, webhook_data=webhook_data)
+    domain_event = github_to_domain(event=webhook_data)
+    background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
 
 
 @webhooks_router.post(path="/gitea", status_code=status.HTTP_200_OK)
@@ -30,4 +32,5 @@ async def gitea_webhook(
     background_tasks: BackgroundTasks,
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
-    background_tasks.add_task(service.process_webhook, webhook_data=webhook_data)
+    domain_event = gitea_to_domain(event=webhook_data)
+    background_tasks.add_task(service.process_webhook, webhook_data=domain_event)

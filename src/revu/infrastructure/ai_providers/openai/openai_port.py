@@ -1,6 +1,7 @@
 from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
     COMMENT_PROMPT,
+    DIFF_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
 )
@@ -22,14 +23,17 @@ class OpenAIPort(AIProviderProtocol):
         self.adapter = adapter
         self.system_prompt = get_settings().SYSTEM_PROMPT
 
-    async def get_comment_response(self, diff: str) -> str:
+    async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
         output = await self.adapter.get_chat_response(
-            user_input=diff, instructions=self.system_prompt or COMMENT_PROMPT
+            user_input=DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            instructions=self.system_prompt or COMMENT_PROMPT,
         )
 
         return output.output_parsed
 
-    async def get_inline_response(self, diff: str, git_provider: str) -> ReviewResponseDTO:
+    async def get_inline_response(
+        self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
+    ) -> ReviewResponseDTO:
         match git_provider:
             case GitProviderEnum.GITHUB:
                 system_prompt = GITHUB_INLINE_PROMPT
@@ -44,7 +48,9 @@ class OpenAIPort(AIProviderProtocol):
             system_prompt = self.system_prompt
 
         output = await self.adapter.get_chat_response(
-            user_input=diff, instructions=system_prompt, response_model=response_model
+            user_input=DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            instructions=system_prompt,
+            response_model=response_model,
         )
 
         parsed_output = output.output_parsed

@@ -5,12 +5,9 @@ from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
 from revu.application.entities.exceptions.webhook_service_exceptions import (
     ReviewModeException,
 )
+from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
-from revu.presentation.webhooks.schemas import (
-    GiteaPullRequestWebhook,
-    GithubPullRequestWebhook,
-)
 
 
 class WebhookService:
@@ -18,35 +15,40 @@ class WebhookService:
         self.ai_port = ai_port
         self.git_port = git_port
 
-    async def process_webhook(self, webhook_data: GithubPullRequestWebhook | GiteaPullRequestWebhook) -> None:
+    async def process_webhook(self, webhook_data: PullRequestEventDTO) -> None:
         requested_diff = await self.git_port.fetch_diff(
-            repo=webhook_data.repository.full_name,
-            index=webhook_data.pull_request.number,
+            repo=webhook_data.repo_full_name,
+            index=webhook_data.pr_number,
         )
 
         diff = requested_diff.decode() if isinstance(requested_diff, bytes) else requested_diff
 
         match get_settings().REVIEW_MODE:
             case ReviewModeEnum.COMMENT:
-                str_review = await self.ai_port.get_comment_response(diff=diff)
+                str_review = await self.ai_port.get_comment_response(
+                    diff=diff, pr_title=webhook_data.pr_title, pr_body=webhook_data.pr_body
+                )
 
                 await self.git_port.send_comment(
-                    repo_owner=webhook_data.repository.full_name,
+                    repo_owner=webhook_data.repo_full_name,
                     review=str_review,
-                    index=webhook_data.pull_request.number,
+                    index=webhook_data.pr_number,
                 )
             case ReviewModeEnum.INLINE:
                 annotated_diff = self.annotate_diff(diff_text=diff)
 
                 dto_review = await self.ai_port.get_inline_response(
-                    diff=annotated_diff, git_provider=get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER
+                    diff=annotated_diff,
+                    git_provider=get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER,
+                    pr_title=webhook_data.pr_title,
+                    pr_body=webhook_data.pr_body,
                 )
 
                 await self.git_port.send_inline(
-                    sha=webhook_data.pull_request.head.sha,
-                    repo_owner=webhook_data.repository.full_name,
+                    sha=webhook_data.commit_sha,
+                    repo_owner=webhook_data.repo_full_name,
                     review=dto_review,
-                    index=webhook_data.pull_request.number,
+                    index=webhook_data.pr_number,
                 )
             case _:
                 raise ReviewModeException("Unknown review mode")
