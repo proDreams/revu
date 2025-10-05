@@ -58,6 +58,18 @@ INLINE_PROMPT = """
    - единый стиль именования переменных и функций.
 
 """
+
+DIFF_PROMPT = """
+Название PR:
+{pr_title}
+
+Описание PR:
+{pr_body}
+
+Commit diff:
+{diff}
+"""
+
 GITHUB_PART = """
 **Формат ответа — строго JSON:**
 

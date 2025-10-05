@@ -6,6 +6,7 @@ from openai.types.chat import (
 from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
     COMMENT_PROMPT,
+    DIFF_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
 )
@@ -29,23 +30,27 @@ class OpenAICompatiblePort(AIProviderProtocol):
 
     @staticmethod
     def _get_messages(
-        prompt: str, diff: str
+        system_prompt: str, user_prompt: str
     ) -> list[ChatCompletionUserMessageParam | ChatCompletionSystemMessageParam]:
         messages = [
-            ChatCompletionSystemMessageParam(role="system", content=prompt),
-            ChatCompletionUserMessageParam(role="user", content=diff),
+            ChatCompletionSystemMessageParam(role="system", content=system_prompt),
+            ChatCompletionUserMessageParam(role="user", content=user_prompt),
         ]
 
         return messages
 
-    async def get_comment_response(self, diff: str) -> str:
+    async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
+        system_prompt = self.system_prompt or COMMENT_PROMPT
+        user_prompt = DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff)
         output = await self.adapter.get_chat_response(
-            messages=self._get_messages(prompt=self.system_prompt or COMMENT_PROMPT, diff=diff)
+            messages=self._get_messages(system_prompt=system_prompt, user_prompt=user_prompt)
         )
 
         return output.choices[0].message.content
 
-    async def get_inline_response(self, diff: str, git_provider: str) -> ReviewResponseDTO:
+    async def get_inline_response(
+        self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
+    ) -> ReviewResponseDTO:
         match git_provider:
             case GitProviderEnum.GITHUB:
                 system_prompt = GITHUB_INLINE_PROMPT
@@ -59,8 +64,11 @@ class OpenAICompatiblePort(AIProviderProtocol):
         if self.system_prompt:
             system_prompt = self.system_prompt
 
+        user_prompt = DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff)
+
         output = await self.adapter.get_chat_response(
-            messages=self._get_messages(prompt=system_prompt, diff=diff), response_model=response_model
+            messages=self._get_messages(system_prompt=system_prompt, user_prompt=user_prompt),
+            response_model=response_model,
         )
 
         parsed_output = output.choices[0].message.parsed

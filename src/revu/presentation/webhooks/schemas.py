@@ -1,6 +1,6 @@
 from pydantic import BaseModel, HttpUrl
 
-from revu.application.entities.enums.webhook_routes_enums import PullRequestActionEnum
+from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 
 
 class Repo(BaseModel):
