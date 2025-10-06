@@ -1,8 +1,9 @@
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
-from revu.presentation.webhooks.schemas import (
+from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
+    GitVersePullRequestWebhook,
 )
 
 
@@ -13,10 +14,13 @@ def github_to_domain(event: GithubPullRequestWebhook) -> PullRequestEventDTO:
         pr_number=event.pull_request.number,
         pr_title=event.pull_request.title,
         pr_body=event.pull_request.body,
-        pr_diff_url=str(event.pull_request.diff_url),
         commit_sha=event.pull_request.head.sha,
     )
 
 
 def gitea_to_domain(event: GiteaPullRequestWebhook) -> PullRequestEventDTO:
+    return github_to_domain(event)
+
+
+def gitverse_to_domain(event: GitVersePullRequestWebhook) -> PullRequestEventDTO:
     return github_to_domain(event)

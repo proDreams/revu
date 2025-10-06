@@ -7,18 +7,23 @@ from starlette import status
 from revu.application.services.webhook_service import WebhookService
 from revu.presentation.webhooks.di import get_webhook_service
 from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain
-from revu.presentation.webhooks.schemas import (
+from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
+    GitVersePullRequestWebhook,
 )
-from revu.presentation.webhooks.validators import verify_and_parse_github_webhook
+from revu.presentation.webhooks.validators import (
+    gitverse_validate_authorization,
+    parse_gitea_webhook,
+    parse_github_webhook,
+)
 
 webhooks_router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
 
 @webhooks_router.post(path="/github", status_code=status.HTTP_200_OK)
 async def github_webhook(
-    webhook_data: Annotated[GithubPullRequestWebhook, Depends(verify_and_parse_github_webhook)],
+    webhook_data: Annotated[GithubPullRequestWebhook, Depends(parse_github_webhook)],
     background_tasks: BackgroundTasks,
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
@@ -28,9 +33,22 @@ async def github_webhook(
 
 @webhooks_router.post(path="/gitea", status_code=status.HTTP_200_OK)
 async def gitea_webhook(
-    webhook_data: Annotated[GiteaPullRequestWebhook, Depends(verify_and_parse_github_webhook)],
+    webhook_data: Annotated[GiteaPullRequestWebhook, Depends(parse_gitea_webhook)],
     background_tasks: BackgroundTasks,
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
     domain_event = gitea_to_domain(event=webhook_data)
     background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
+
+
+@webhooks_router.post(path="/gitverse", status_code=status.HTTP_200_OK)
+async def gitverse_webhook(
+    webhook_data: GitVersePullRequestWebhook,
+    _: Annotated[None, Depends(gitverse_validate_authorization)],
+    background_tasks: BackgroundTasks,
+    service: Annotated[WebhookService, Depends(get_webhook_service)],
+) -> None:
+    # domain_event = gitverse_to_domain(event=webhook_data)
+    # background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
+    # Currently unavailable
+    raise NotImplementedError()

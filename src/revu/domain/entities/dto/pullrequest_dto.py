@@ -9,6 +9,5 @@ class PullRequestEventDTO:
     repo_full_name: str
     pr_number: int
     pr_title: str
-    pr_diff_url: str
     commit_sha: str
     pr_body: str | None = None
