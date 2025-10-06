@@ -2,9 +2,9 @@ FROM python:3.13.7-slim
 # Use the official lightweight Python 3.13.7 image as the base.
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends make \
+    && apt-get install -y --no-install-recommends make curl \
     && rm -rf /var/lib/apt/lists/*
-# Update package lists, install `make`,
+# Update package lists, install `make` and `curl`,
 # and remove cached apt data to keep the image small.
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
