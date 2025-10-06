@@ -1,4 +1,4 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 
@@ -13,7 +13,6 @@ class Branch(BaseModel):
 
 class PullRequest(BaseModel):
     number: int
-    diff_url: HttpUrl
     head: Branch
     title: str
     body: str | None = None
@@ -26,4 +25,8 @@ class GithubPullRequestWebhook(BaseModel):
 
 
 class GiteaPullRequestWebhook(GithubPullRequestWebhook):
+    pass
+
+
+class GitVersePullRequestWebhook(GithubPullRequestWebhook):
     pass
