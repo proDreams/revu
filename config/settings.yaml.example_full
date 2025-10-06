@@ -17,8 +17,9 @@ GIT_PROVIDER_CONFIG:
 
 AI_PROVIDER_CONFIG:
   # AI_PROVIDER — which AI API you use:
-  # "openai"
-  # "openai_compatible" (openrouter, lmstudio, etc...)
+  # "openai" (official Responses API)
+  # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
+  # "gigachat"
   AI_PROVIDER: "openai"
   # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
   AI_PROVIDER_API_KEY: "aasdasdasd"
@@ -27,6 +28,8 @@ AI_PROVIDER_CONFIG:
   # AI_PROVIDER_BASE_URL — base URL for OpenAI-compatible providers
   # (useful when you run your own LLM API or use third-party endpoints like OpenRouter, LocalAI, LM Studio, etc.)
   AI_PROVIDER_BASE_URL: "https://example.com/v1"
+  # AI_PROVIDER_SCOPE — required only for GigaChat API (scope parameter used for authorization)
+  AI_PROVIDER_SCOPE: "GIGACHAT_API_PERS"
 
 # HTTP_CLIENT_TIMEOUT — how long to wait (in seconds) before HTTP requests fail
 HTTP_CLIENT_TIMEOUT: 30.0
