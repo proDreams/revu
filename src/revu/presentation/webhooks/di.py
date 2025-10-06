@@ -8,6 +8,10 @@ from revu.application.entities.exceptions.webhook_routes_exceptions import (
     GitProviderException,
 )
 from revu.application.services.webhook_service import WebhookService
+from revu.infrastructure.ai_providers.gigachat.gigachat_port import (
+    GigaChatPort,
+    get_gigachat_port,
+)
 from revu.infrastructure.ai_providers.openai.openai_port import (
     OpenAIPort,
     get_openai_port,
@@ -36,12 +40,14 @@ def get_git_provider_port() -> GithubPort | GiteaPort:
             raise GitProviderException("Unknown GIT provider")
 
 
-def get_ai_provider_port() -> OpenAIPort | OpenAICompatiblePort:
+def get_ai_provider_port() -> OpenAIPort | OpenAICompatiblePort | GigaChatPort:
     match get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER:
         case AIProviderEnum.OPENAI:
             return get_openai_port()
         case AIProviderEnum.OPENAI_COMPATIBLE:
             return get_openai_compatible_port()
+        case AIProviderEnum.GIGACHAT:
+            return get_gigachat_port()
         case _:
             raise AIProviderException("Unknown AI provider")
 
