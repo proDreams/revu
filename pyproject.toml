@@ -9,6 +9,7 @@ requires-python = ">=3.13"
 dependencies = [
     "dynaconf>=3.2.11",
     "fastapi[standard]>=0.118.0",
+    "gigachat>=0.1.42.post2",
     "hatchling>=1.27.0",
     "httpx>=0.28.1",
     "openai>=2.0.1",
