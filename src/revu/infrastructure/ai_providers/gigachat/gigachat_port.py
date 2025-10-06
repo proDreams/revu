@@ -10,6 +10,10 @@ from revu.application.entities.default_prompts import (
     GITHUB_INLINE_PROMPT,
 )
 from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
+from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
+    UnknownGitProvider,
+)
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
@@ -49,7 +53,7 @@ class GigaChatPort(AIProviderProtocol):
             case GitProviderEnum.GITEA:
                 system_prompt = GITEA_INLINE_PROMPT
             case _:
-                raise NotImplementedError()
+                raise UnknownGitProvider("unknown git provider")
 
         if self.system_prompt:
             system_prompt = self.system_prompt
@@ -61,7 +65,10 @@ class GigaChatPort(AIProviderProtocol):
 
         output = await self.adapter.get_chat_response(payload=chat)
 
-        serialized_output = json.loads(output)
+        try:
+            serialized_output = json.loads(output)
+        except json.decoder.JSONDecodeError:
+            raise InvalidAIOutput("invalid JSON response from gigachat")
 
         return ReviewResponseDTO.from_request(
             general_comment=serialized_output["general_comment"],

@@ -11,6 +11,9 @@ from revu.application.entities.default_prompts import (
     GITHUB_INLINE_PROMPT,
 )
 from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
+from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    UnknownGitProvider,
+)
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
     GiteaReviewResponse,
     GithubReviewResponse,
@@ -59,7 +62,7 @@ class OpenAICompatiblePort(AIProviderProtocol):
                 system_prompt = GITEA_INLINE_PROMPT
                 response_model = GiteaReviewResponse
             case _:
-                raise NotImplementedError()
+                raise UnknownGitProvider("unknown git provider")
 
         if self.system_prompt:
             system_prompt = self.system_prompt
