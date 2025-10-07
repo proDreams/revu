@@ -30,6 +30,8 @@ AI_PROVIDER_CONFIG:
   AI_PROVIDER_BASE_URL: "https://example.com/v1"
   # AI_PROVIDER_SCOPE — required only for GigaChat API (scope parameter used for authorization)
   AI_PROVIDER_SCOPE: "GIGACHAT_API_PERS"
+  # AI_PROVIDER_FOLDER_ID - required only for YandexGPT. Project folder identification
+  AI_PROVIDER_FOLDER_ID: "abcdef"
 
 # HTTP_CLIENT_TIMEOUT — how long to wait (in seconds) before HTTP requests fail
 HTTP_CLIENT_TIMEOUT: 30.0

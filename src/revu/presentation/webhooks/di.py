@@ -20,6 +20,10 @@ from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_port i
     OpenAICompatiblePort,
     get_openai_compatible_port,
 )
+from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_port import (
+    YandexGPTPort,
+    get_yandexgpt_port,
+)
 from revu.infrastructure.git_providers.gitea.gitea_port import (
     GiteaPort,
     get_gitea_port,
@@ -40,7 +44,7 @@ def get_git_provider_port() -> GithubPort | GiteaPort:
             raise GitProviderException("Unknown GIT provider")
 
 
-def get_ai_provider_port() -> OpenAIPort | OpenAICompatiblePort | GigaChatPort:
+def get_ai_provider_port() -> OpenAIPort | OpenAICompatiblePort | GigaChatPort | YandexGPTPort:
     match get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER:
         case AIProviderEnum.OPENAI:
             return get_openai_port()
@@ -48,6 +52,8 @@ def get_ai_provider_port() -> OpenAIPort | OpenAICompatiblePort | GigaChatPort:
             return get_openai_compatible_port()
         case AIProviderEnum.GIGACHAT:
             return get_gigachat_port()
+        case AIProviderEnum.YANDEXGPT:
+            return get_yandexgpt_port()
         case _:
             raise AIProviderException("Unknown AI provider")
 
