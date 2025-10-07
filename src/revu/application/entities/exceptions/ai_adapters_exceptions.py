@@ -7,3 +7,7 @@ class UnknownGitProvider(CoreException):
 
 class InvalidAIOutput(CoreException):
     pass
+
+
+class NoAIResponse(CoreException):
+    pass
