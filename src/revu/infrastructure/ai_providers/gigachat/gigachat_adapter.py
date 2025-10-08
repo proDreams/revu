@@ -13,7 +13,7 @@ class GigaChatAdapter:
         )
 
     async def get_chat_response(self, payload: Chat) -> str:
-        response = self._gigachat_client.chat(payload=payload)
+        response = await self._gigachat_client.chat(payload=payload)
 
         return response.choices[0].message.content
 
