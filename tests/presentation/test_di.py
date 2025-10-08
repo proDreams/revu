@@ -19,6 +19,8 @@ from revu.presentation.webhooks.di import (
     get_webhook_service,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def test_git_provider_github(monkeypatch, settings):
     settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER"] = "github"

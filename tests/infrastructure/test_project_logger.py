@@ -1,6 +1,11 @@
 import logging
 
+import pytest
+
+from revu.application.config import get_logger
 from revu.infrastructure.logger.project_logger import ProjectLogger
+
+pytestmark = pytest.mark.unit
 
 
 def _cleanup_logger(logger: logging.Logger) -> None:
@@ -44,3 +49,17 @@ def test_project_logger_formatter_contains_expected_fields():
     formatted = formatter.format(record)
     assert "[test" in formatted
     assert "hello" in formatted
+
+
+def test_get_logger_returns_logger():
+    logger = get_logger(name=__name__)
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.name == __name__
+
+
+def test_get_logger_without_name():
+    logger = get_logger()
+
+    assert isinstance(logger, logging.Logger)
+    assert logger.name == "revu.application.config"
