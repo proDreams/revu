@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints
 
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 
@@ -8,7 +10,7 @@ class Repo(BaseModel):
 
 
 class Branch(BaseModel):
-    sha: str
+    sha: Annotated[str, StringConstraints(min_length=40, max_length=40)]
 
 
 class PullRequest(BaseModel):

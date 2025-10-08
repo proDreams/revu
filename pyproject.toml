@@ -33,6 +33,35 @@ packages = ["src/revu"]
 [project.scripts]
 app = "revu.runner:run"
 
+[project.optional-dependencies]
+pytest = [
+    "coverage>=7.10.7",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+    "respx>=0.22.0",
+]
+
 [tool.ruff]
 line-length = 120
 indent-width = 4
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    "--tb=short",
+    "--cov=src",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=80"
+]
+
+testpaths = ["tests"]
+markers = [
+    "unit: Unit tests for domain logic",
+    "integration: Integration tests for application layer",
+]
+
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
