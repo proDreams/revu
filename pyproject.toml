@@ -54,7 +54,7 @@ addopts = [
     "--tb=short",
     "--cov=src",
     "--cov-report=term-missing:skip-covered",
-    "--cov-fail-under=85"
+    "--cov-fail-under=90"
 ]
 
 testpaths = ["tests"]
