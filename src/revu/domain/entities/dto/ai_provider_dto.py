@@ -1,5 +1,9 @@
 from dataclasses import dataclass
 
+from revu.domain.entities.exceptions.git_provider_exceptions import (
+    UnknownGitProviderException,
+)
+
 
 @dataclass
 class GithubReviewCommentDTO:
@@ -35,4 +39,4 @@ class ReviewResponseDTO:
                     comments=[GiteaReviewCommentDTO(**comment) for comment in comments],
                 )
             case _:
-                raise NotImplementedError
+                raise UnknownGitProviderException("Unknown Git Provider")

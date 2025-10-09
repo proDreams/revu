@@ -47,7 +47,9 @@ class HttpClientGateway(Singleton):
                         try:
                             return resp.json()
                         except Exception:
-                            logger.error("Non-JSON response: %s", resp.text)
+                            logger.error(
+                                f"Non-JSON response: {resp.text}",
+                            )
                             raise HttpGatewayError(f"Non-JSON response from {url}: {resp.text[:300]}")
                     return None
                 else:
@@ -57,7 +59,7 @@ class HttpClientGateway(Singleton):
                 logger.warning(f"http error: {e}")
                 if i < attempts - 1:
                     continue
-                raise HTTPGatewayAttemptLimitExceeded()
+                raise HTTPGatewayAttemptLimitExceeded(f"Limit exceeded. Last error: {e}")
 
         return None
 

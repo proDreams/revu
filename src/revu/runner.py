@@ -2,9 +2,10 @@ from revu.application.app import run_app
 
 
 def run() -> None:
-    """Запустить приложение, используя стандартный раннер FastAPI.
+    """
+    Entry point for running the application from uv and Makefile
 
-    :return: None
+    return: None
     """
 
     run_app()

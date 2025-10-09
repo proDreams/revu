@@ -1,0 +1,2 @@
+class UnknownGitProviderException(Exception):
+    pass
