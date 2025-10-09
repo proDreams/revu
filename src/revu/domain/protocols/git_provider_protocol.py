@@ -15,7 +15,22 @@ class GitProviderProtocol(Protocol):
         ...
 
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
-        pass
+        """
+
+        :param repo_owner:
+        :param review:
+        :param index:
+        :return:
+        """
+        ...
 
     async def send_inline(self, sha: str, repo_owner: str, review: ReviewResponseDTO, index: int):
-        pass
+        """
+
+        :param sha:
+        :param repo_owner:
+        :param review:
+        :param index:
+        :return:
+        """
+        ...
