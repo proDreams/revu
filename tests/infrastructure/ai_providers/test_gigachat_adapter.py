@@ -6,8 +6,6 @@ from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import GigaChatA
 
 
 async def test_gigachat_adapter_returns_sdk_response(settings, monkeypatch):
-    monkeypatch.setattr("revu.infrastructure.ai_providers.gigachat.gigachat_adapter.get_settings", lambda: settings)
-
     fake_response = MagicMock()
     fake_response.choices = [MagicMock(message=MagicMock(content="test"))]
 

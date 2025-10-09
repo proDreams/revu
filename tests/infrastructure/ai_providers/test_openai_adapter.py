@@ -10,6 +10,7 @@ async def test_openai_adapter_returns_sdk_response():
     adapter = OpenAIAdapter(http_client=get_http_gateway())
     adapter._openai_client = AsyncMock()
     adapter._openai_client.responses.parse.return_value = fake_response
+    adapter.model = "gpt-4o"
 
     resp = await adapter.get_chat_response(instructions="instr", user_input="text")
 

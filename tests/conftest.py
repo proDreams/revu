@@ -1,11 +1,9 @@
 import pytest
 from dynaconf import Dynaconf
 
-import revu.application.config as app_config
 
-
-@pytest.fixture(autouse=True, scope="session")
-def settings():
+@pytest.fixture(autouse=True)
+def settings(monkeypatch):
     fake_settings = Dynaconf(
         GIT_PROVIDER_CONFIG=Dynaconf(
             GIT_PROVIDER="gitea",
@@ -28,6 +26,14 @@ def settings():
         BACKUP_COUNT=5,
     )
 
-    app_config.get_settings = lambda: fake_settings
+    monkeypatch.setattr(
+        "revu.infrastructure.ai_providers.gigachat.gigachat_adapter.get_settings", lambda: fake_settings
+    )
+    monkeypatch.setattr(
+        "revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter.get_settings", lambda: fake_settings
+    )
+    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: fake_settings)
+    monkeypatch.setattr("revu.infrastructure.git_providers.gitea.gitea_port.get_settings", lambda: fake_settings)
+    monkeypatch.setattr("revu.infrastructure.git_providers.github.github_port.get_settings", lambda: fake_settings)
 
     return fake_settings

@@ -12,7 +12,7 @@ class YandexGPTAdapter:
         )
 
     async def get_chat_response(self, messages: list[dict[str, str]]) -> str:
-        model = self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
+        model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
 
         response = await model.run(messages)
 

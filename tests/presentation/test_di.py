@@ -24,7 +24,6 @@ pytestmark = pytest.mark.unit
 
 def test_git_provider_github(monkeypatch, settings):
     settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER"] = "github"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     port = get_git_provider_port()
     assert isinstance(port, GithubPort)
@@ -32,7 +31,6 @@ def test_git_provider_github(monkeypatch, settings):
 
 def test_git_provider_gitea(monkeypatch, settings):
     settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER"] = "gitea"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     port = get_git_provider_port()
     assert isinstance(port, GiteaPort)
@@ -40,7 +38,6 @@ def test_git_provider_gitea(monkeypatch, settings):
 
 def test_unknown_git_provider(monkeypatch, settings):
     settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER"] = "unknown"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     with pytest.raises(GitProviderException) as exc_info:
         get_git_provider_port()
@@ -50,7 +47,6 @@ def test_unknown_git_provider(monkeypatch, settings):
 
 def test_ai_provider_openai(monkeypatch, settings):
     settings["AI_PROVIDER_CONFIG"]["AI_PROVIDER"] = "openai"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     port = get_ai_provider_port()
     assert isinstance(port, OpenAIPort)
@@ -58,7 +54,6 @@ def test_ai_provider_openai(monkeypatch, settings):
 
 def test_ai_provider_openai_compatible(monkeypatch, settings):
     settings["AI_PROVIDER_CONFIG"]["AI_PROVIDER"] = "openai_compatible"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     port = get_ai_provider_port()
     assert isinstance(port, OpenAICompatiblePort)
@@ -67,7 +62,6 @@ def test_ai_provider_openai_compatible(monkeypatch, settings):
 def test_ai_provider_gigachat(monkeypatch, settings):
     settings["AI_PROVIDER_CONFIG"]["AI_PROVIDER"] = "gigachat"
     monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
-    monkeypatch.setattr("revu.infrastructure.ai_providers.gigachat.gigachat_adapter.get_settings", lambda: settings)
 
     port = get_ai_provider_port()
     assert isinstance(port, GigaChatPort)
@@ -76,7 +70,6 @@ def test_ai_provider_gigachat(monkeypatch, settings):
 def test_ai_provider_yandexgpt(monkeypatch, settings):
     settings["AI_PROVIDER_CONFIG"]["AI_PROVIDER"] = "yandexgpt"
     monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
-    monkeypatch.setattr("revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter.get_settings", lambda: settings)
 
     port = get_ai_provider_port()
     assert isinstance(port, YandexGPTPort)
@@ -84,7 +77,6 @@ def test_ai_provider_yandexgpt(monkeypatch, settings):
 
 def test_unknown_ai_provider(monkeypatch, settings):
     settings["AI_PROVIDER_CONFIG"]["AI_PROVIDER"] = "unknown"
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: settings)
 
     with pytest.raises(AIProviderException) as exc_info:
         get_ai_provider_port()
