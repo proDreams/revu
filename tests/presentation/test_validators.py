@@ -6,7 +6,6 @@ import pytest
 from fastapi import HTTPException
 from starlette import status
 
-from revu.application.config import get_settings
 from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
@@ -23,11 +22,9 @@ from tests.fixtures.presentation_fixtures.payloads import VALID_WEBHOOK_PAYLOAD
 pytestmark = pytest.mark.unit
 
 
-async def test_valid_github_webhook_signature():
+async def test_valid_github_webhook_signature(settings):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    sig = hmac.new(
-        get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256).hexdigest()
 
     request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
 
@@ -61,11 +58,9 @@ async def test_invalid_github_webhook_signature():
     assert "Request signatures didn't match!" in exc_info.value.detail
 
 
-async def test_valid_parse_github_webhook():
+async def test_valid_parse_github_webhook(settings):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    sig = hmac.new(
-        get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256).hexdigest()
 
     request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
 
@@ -74,11 +69,9 @@ async def test_valid_parse_github_webhook():
     assert isinstance(result, GithubPullRequestWebhook)
 
 
-async def test_valid_parse_gitea_webhook():
+async def test_valid_parse_gitea_webhook(settings):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    sig = hmac.new(
-        get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256).hexdigest()
 
     request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
 
@@ -87,11 +80,9 @@ async def test_valid_parse_gitea_webhook():
     assert isinstance(result, GiteaPullRequestWebhook)
 
 
-async def test_invalid_parse_github_webhook():
+async def test_invalid_parse_github_webhook(settings):
     body = b"broken JSON"
-    sig = hmac.new(
-        get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256).hexdigest()
 
     request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
 
@@ -102,11 +93,9 @@ async def test_invalid_parse_github_webhook():
     assert "Invalid JSON payload" in exc_info.value.detail
 
 
-async def test_invalid_parse_gitea_webhook():
+async def test_invalid_parse_gitea_webhook(settings):
     body = b"broken JSON"
-    sig = hmac.new(
-        get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256
-    ).hexdigest()
+    sig = hmac.new(settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN.encode(), body, hashlib.sha256).hexdigest()
 
     request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
 
@@ -117,9 +106,9 @@ async def test_invalid_parse_gitea_webhook():
     assert "Invalid JSON payload" in exc_info.value.detail
 
 
-async def test_valid_gitverse_authorization():
+async def test_valid_gitverse_authorization(settings):
     request = await make_request(
-        body=b"", headers={"authorization": get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN}
+        body=b"", headers={"authorization": settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN}
     )
 
     await gitverse_validate_authorization(request=request)

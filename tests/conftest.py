@@ -14,6 +14,7 @@ def settings(monkeypatch):
         AI_PROVIDER_CONFIG=Dynaconf(
             AI_PROVIDER="openai",
             AI_PROVIDER_API_KEY="test-key",
+            AI_PROVIDER_BASE_URL="https://example.com/v1",
             AI_PROVIDER_MODEL="gpt-4.1-mini",
             AI_PROVIDER_SCOPE="test-scope",
             AI_PROVIDER_FOLDER_ID="test-folder-id",
@@ -29,10 +30,16 @@ def settings(monkeypatch):
     monkeypatch.setattr(
         "revu.infrastructure.ai_providers.gigachat.gigachat_adapter.get_settings", lambda: fake_settings
     )
+    monkeypatch.setattr("revu.infrastructure.ai_providers.openai.openai_adapter.get_settings", lambda: fake_settings)
+    monkeypatch.setattr(
+        "revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapter.get_settings",
+        lambda: fake_settings,
+    )
     monkeypatch.setattr(
         "revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter.get_settings", lambda: fake_settings
     )
     monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: fake_settings)
+    monkeypatch.setattr("revu.presentation.webhooks.validators.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.gitea.gitea_port.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.github.github_port.get_settings", lambda: fake_settings)
 
