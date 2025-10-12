@@ -4,6 +4,7 @@ from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
     GitVersePullRequestWebhook,
+    BitBucketPullRequestWebhook,
 )
 
 
@@ -23,4 +24,8 @@ def gitea_to_domain(event: GiteaPullRequestWebhook) -> PullRequestEventDTO:
 
 
 def gitverse_to_domain(event: GitVersePullRequestWebhook) -> PullRequestEventDTO:
+    return github_to_domain(event)
+
+
+def bitbucket_to_domain(event: BitBucketPullRequestWebhook) -> PullRequestEventDTO:
     return github_to_domain(event)

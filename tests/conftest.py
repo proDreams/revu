@@ -42,5 +42,6 @@ def settings(monkeypatch):
     monkeypatch.setattr("revu.presentation.webhooks.validators.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.gitea.gitea_port.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.github.github_port.get_settings", lambda: fake_settings)
+    monketpatch.setattr("revu.infrastructure.git_providers.bitbucket.bitbucket_port.get_settings", lambda: fake_settings)
 
     return fake_settings

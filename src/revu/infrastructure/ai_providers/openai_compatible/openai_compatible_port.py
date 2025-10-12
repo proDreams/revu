@@ -9,6 +9,7 @@ from revu.application.entities.default_prompts import (
     DIFF_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
+    BITBUCKET_INLINE_PROMPT,
 )
 from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
@@ -17,6 +18,7 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import (
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
     GiteaReviewResponse,
     GithubReviewResponse,
+    BitbucketReviewResponse,
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
@@ -61,6 +63,9 @@ class OpenAICompatiblePort(AIProviderProtocol):
             case GitProviderEnum.GITEA:
                 system_prompt = GITEA_INLINE_PROMPT
                 response_model = GiteaReviewResponse
+            case GitProviderEnum.BITBUCKET:
+                system_prompt = BITBUCKET_INLINE_PROMPT
+                response_model = BitbucketReviewResponse
             case _:
                 raise UnknownGitProvider("unknown git provider")
 
