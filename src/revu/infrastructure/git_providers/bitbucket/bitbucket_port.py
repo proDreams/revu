@@ -47,7 +47,7 @@ class BitbucketPort(GitProviderProtocol):
             "anchor": {
                 "path": path,
                 "lineType": lineType,
-                "line": 1,
+                "line": index,
                 "diffType": "EFFECTIVE"
             }
         }
