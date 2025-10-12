@@ -19,7 +19,7 @@ class BitbucketPort(GitProviderProtocol):
         self.bitbucket_url = self.git_conf.GIT_PROVIDER_URL
         
     def _get_headers(self) -> dict[str, str]:
-        return {"Authorization": f"token {self.bitbucket_token}"}
+        return {"Authorization": f"Bearer {self.bitbucket_token}"}
     
     async def fetch_diff(self, repo: str, index: int) -> str:
         fetch_path = f"rest/api/1.0/projects/{repo}/pull-requests/{index}/diff"
