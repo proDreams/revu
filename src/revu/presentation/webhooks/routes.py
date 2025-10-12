@@ -17,6 +17,7 @@ from revu.presentation.webhooks.validators import (
     gitverse_validate_authorization,
     parse_gitea_webhook,
     parse_github_webhook,
+    parse_bitbucket_webhook
 )
 
 webhooks_router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -44,7 +45,7 @@ async def gitea_webhook(
     
 @webhooks_router.post(path='/bitbucket', status_code=status.HTTP_200_OK)
 async def bitbucket_webhook(
-    webhook_data: BitBucketRawPullRequestWebhook,
+    webhook_data: Annotated[BitBucketRawPullRequestWebhook, Depends(parse_bitbucket_webhook)],
     background_tasks: BackgroundTasks,
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
