@@ -22,7 +22,7 @@ class BitbucketPort(GitProviderProtocol):
         return {"Authorization": f"token {self.bitbucket_token}"}
     
     async def fetch_diff(self, repo: str, index: int) -> str:
-        fetch_path = f"rest/api/1.0/projects/{repo}/pullrequests/{index}/diff"
+        fetch_path = f"rest/api/1.0/projects/{repo}/pull-requests/{index}/diff"
         diff_url = urljoin(self.bitbucket_url.rstrip("/") + "/", fetch_path)
 
         diff = await self.http_client.get(url=diff_url, headers=self._get_headers())
@@ -30,7 +30,7 @@ class BitbucketPort(GitProviderProtocol):
         return json_diff_to_unified(diff)
     
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
-        comment_url = f"rest/api/1.0/projects/{repo_owner}/pullrequests/{index}/comments"
+        comment_url = f"rest/api/1.0/projects/{repo_owner}/pull-requests/{index}/comments"
         comment_url = urljoin(self.bitbucket_url.rstrip("/") + "/", comment_url)
         data = {
             "text": review
@@ -40,7 +40,7 @@ class BitbucketPort(GitProviderProtocol):
     
     
     async def _send_inline(self, repo: str, text: str, index: int, path: str, lineType: str) -> None:
-        comment_url = f"rest/api/1.0/projects/{repo}/pullrequests/{index}/comments"
+        comment_url = f"rest/api/1.0/projects/{repo}/pull-requests/{index}/comments"
         comment_url = urljoin(self.bitbucket_url.rstrip("/") + "/", comment_url)
         data = {
             "text": text,
@@ -56,7 +56,7 @@ class BitbucketPort(GitProviderProtocol):
     
     
     async def send_inline(self, sha: str, repo_owner: str, review: ReviewResponseDTO, index: int) -> None:
-        comment_url = f"rest/api/1.0/projects/{repo_owner}/pullrequests/{index}/comments"
+        comment_url = f"rest/api/1.0/projects/{repo_owner}/pull-requests/{index}/comments"
         comment_url = urljoin(self.bitbucket_url.rstrip("/") + "/", comment_url)
         
         await self.send_comment(repo_owner, review.general_comment, index)
