@@ -54,8 +54,11 @@ async def parse_bitbucket_webhook(request: Request) -> BitBucketRawPullRequestWe
 
     try:
         payload_dict = json.loads(body)
-        if get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_REVIEWER is not None:
-            if get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_REVIEWER not in [k['name'] for k in payload_dict['pullRequest']['reviewers']]:
+        reviewer = get_settings().GIT_PROVIDER_CONFIG.get('GIT_PROVIDER_REVIEWER', None)
+        if reviewer is not None:
+            if reviewer not in [k['user']['name'] for k in payload_dict['pullRequest']['reviewers']] \
+            and reviewer not in [k['user']['emailAddress'] for k in payload_dict['pullRequest']['reviewers']] \
+            and reviewer not in [k['user']['displayName'] for k in payload_dict['pullRequest']['reviewers']]:
                 raise HTTPException(status_code=200, detail="Review not needed")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
