@@ -59,12 +59,12 @@ class BitbucketPort(GitProviderProtocol):
         comment_url = f"rest/api/1.0/projects/{repo_owner}/pull-requests/{index}/comments"
         comment_url = urljoin(self.bitbucket_url.rstrip("/") + "/", comment_url)
         
-        await self.send_comment(repo_owner, review.general_comment, index)
-        
         for comment in review.comments:
             if 'lineType' not in comment.__dict__:
                 raise Exception('Only Bitbucket comments are supported')
             await self._send_inline(repo_owner, comment.body, index, comment.path, comment.lineType)
+            
+        await self.send_comment(repo_owner, review.general_comment, index)
 
 
 def get_bitbucket_port() -> BitbucketPort:
