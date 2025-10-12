@@ -60,6 +60,8 @@ async def parse_bitbucket_webhook(request: Request) -> BitBucketRawPullRequestWe
             and reviewer not in [k['user']['emailAddress'] for k in payload_dict['pullRequest']['reviewers']] \
             and reviewer not in [k['user']['displayName'] for k in payload_dict['pullRequest']['reviewers']]:
                 raise HTTPException(status_code=200, detail="Review not needed")
+        if payload_dict['eventKey'] not in ('pr:modified', 'pr:opened'):
+            raise HTTPException(status_code=200, detail="Review not needed")
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
