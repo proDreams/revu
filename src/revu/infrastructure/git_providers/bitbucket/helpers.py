@@ -1,6 +1,3 @@
-from locale import strcoll
-
-
 PREFIX = {
     'CONTEXT': ' ',
     'ADDED': '+',
@@ -11,9 +8,10 @@ PREFIX = {
 def json_diff_to_unified(diff_json) -> str:
     lines = []
     for file_diff in diff_json['diffs']:
-        src = file_diff.get('source', {}).get('toString', None)
-        dst = file_diff.get('destination', {}).get('toString', None)
+        src = (file_diff.get('source') or {}).get('toString', '/dev/null')
+        dst = (file_diff.get('destination') or {}).get('toString', '/dev/null')
         lines.append(f"diff --git a/{src} b/{dst}")
+        
         lines.append(f'--- a/{src}')
         lines.append(f'+++ b/{dst}')
         

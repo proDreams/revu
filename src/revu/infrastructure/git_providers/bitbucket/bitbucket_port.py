@@ -26,7 +26,6 @@ class BitbucketPort(GitProviderProtocol):
         diff_url = urljoin(self.bitbucket_url.rstrip("/") + "/", fetch_path)
 
         diff = await self.http_client.get(url=diff_url, headers=self._get_headers())
-        print(diff)
 
         return json_diff_to_unified(diff)
     
