@@ -85,6 +85,6 @@ class BitBucketRawPullRequestWebhook(BaseModel):
                 body=None,
             ),
             repository=Repo(
-                full_name=f"{self.pullRequest.toRef.repository.project.key}/repose/{self.pullRequest.toRef.repository.slug}"
+                full_name=f"{self.pullRequest.toRef.repository.project.key}/repos/{self.pullRequest.toRef.repository.slug}"
             )
         )
