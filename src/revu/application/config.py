@@ -17,6 +17,7 @@ class Config:
             Validator("BACKUP_COUNT", default=5, cast=int),
             Validator("HTTP_CLIENT_TIMEOUT", default=30.0, cast=float),
             Validator("HTTP_CLIENT_REQUEST_ATTEMPTS", default=3, cast=int),
+            Validator("STATS_ENABLED", default=False, cast=bool)
         ],
     )
     logger = ProjectLogger(settings=settings)

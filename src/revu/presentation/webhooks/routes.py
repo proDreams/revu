@@ -5,6 +5,7 @@ from fastapi.params import Depends
 from starlette import status
 
 from revu.application.services.webhook_service import WebhookService
+from revu.application.services.statistics import StatisticsService
 from revu.presentation.webhooks.di import get_webhook_service
 from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain, bitbucket_to_domain
 from revu.presentation.webhooks.schemas.github_schemas import (
@@ -65,3 +66,9 @@ async def gitverse_webhook(
     # background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
     # Currently unavailable
     raise NotImplementedError()
+
+
+@webhooks_router.get(path="/stats")
+async def get_stats() -> dict[str, int]:
+    return await StatisticsService().get_all_reviews()
+
