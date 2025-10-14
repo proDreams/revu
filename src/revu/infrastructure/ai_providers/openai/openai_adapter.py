@@ -13,10 +13,10 @@ class OpenAIAdapter:
     def __init__(self, http_client: HttpClientGateway) -> None:
         self._http_client = http_client
         self._openai_client = AsyncClient(
-            api_key=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,
+            api_key=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,  # type: ignore
             http_client=self._http_client.get_client(),
         )
-        self.model = get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL
+        self.model = get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL  # type: ignore
 
     async def get_chat_response(
         self,
@@ -25,10 +25,10 @@ class OpenAIAdapter:
         response_model: type[BaseModel] | None = None,
     ) -> ParsedResponse:
         response = await self._openai_client.responses.parse(
-            model=self.model,
+            model=self.model,  # type: ignore
             instructions=instructions,
             input=user_input,
-            text_format=response_model,
+            text_format=response_model,  # type: ignore
         )
 
         return response

@@ -8,11 +8,11 @@ class YandexGPTAdapter:
     def __init__(self) -> None:
         self._ai_provider_config = get_settings().AI_PROVIDER_CONFIG
         self._yandexgpt_client = AsyncYCloudML(
-            folder_id=self._ai_provider_config.AI_PROVIDER_FOLDER_ID, auth=self._ai_provider_config.AI_PROVIDER_API_KEY
+            folder_id=self._ai_provider_config.AI_PROVIDER_FOLDER_ID, auth=self._ai_provider_config.AI_PROVIDER_API_KEY  # type: ignore
         )
 
     async def get_chat_response(self, messages: list[dict[str, str]]) -> str:
-        model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
+        model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)  # type: ignore
 
         response = await model.run(messages)
 

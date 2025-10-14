@@ -1,31 +1,21 @@
 import json
 
 from gigachat.models import Chat, Messages, MessagesRole
-
-from revu.application.config import get_settings
-from revu.application.entities.default_prompts import (
-    COMMENT_PROMPT,
-    DIFF_PROMPT,
-    GITEA_INLINE_PROMPT,
-    GITHUB_INLINE_PROMPT,
-)
-from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
-    UnknownGitProvider,
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
-from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
     GigaChatAdapter,
     get_gigachat_adapter,
 )
 
+from ..base import BaseAIPort
 
-class GigaChatPort(AIProviderProtocol):
+
+class GigaChatPort(BaseAIPort):
     def __init__(self, adapter: GigaChatAdapter) -> None:
         self.adapter = adapter
-        self.system_prompt = get_settings().SYSTEM_PROMPT
 
     @staticmethod
     def _get_chat(system_prompt: str, user_prompt: str) -> Chat:
@@ -37,9 +27,10 @@ class GigaChatPort(AIProviderProtocol):
         )
 
     async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
+        system_prompt = self.system_prompt or self._get_comment_prompt()
         chat = self._get_chat(
-            system_prompt=self.system_prompt or COMMENT_PROMPT,
-            user_prompt=DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            system_prompt=system_prompt,
+            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
         )
 
         return await self.adapter.get_chat_response(payload=chat)
@@ -47,20 +38,14 @@ class GigaChatPort(AIProviderProtocol):
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
     ) -> ReviewResponseDTO:
-        match git_provider:
-            case GitProviderEnum.GITHUB:
-                system_prompt = GITHUB_INLINE_PROMPT
-            case GitProviderEnum.GITEA:
-                system_prompt = GITEA_INLINE_PROMPT
-            case _:
-                raise UnknownGitProvider("unknown git provider")
+        system_prompt = self._get_prompt(git_provider)
 
         if self.system_prompt:
             system_prompt = self.system_prompt
 
         chat = self._get_chat(
             system_prompt=system_prompt,
-            user_prompt=DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
         )
 
         output = await self.adapter.get_chat_response(payload=chat)
