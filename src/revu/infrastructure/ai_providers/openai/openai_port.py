@@ -3,8 +3,7 @@ from revu.infrastructure.ai_providers.openai.openai_adapter import (
     OpenAIAdapter,
     get_openai_adapter,
 )
-
-from ..base import BaseAIPort
+from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class OpenAIPort(BaseAIPort):

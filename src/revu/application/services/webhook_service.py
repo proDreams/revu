@@ -8,17 +8,14 @@ from revu.application.entities.exceptions.webhook_service_exceptions import (
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
-from revu.application.services.statistics import StatisticsService
 
 
 class WebhookService:
     def __init__(self, ai_port: AIProviderProtocol, git_port: GitProviderProtocol) -> None:
         self.ai_port = ai_port
         self.git_port = git_port
-        self.stats = StatisticsService()
 
     async def process_webhook(self, webhook_data: PullRequestEventDTO) -> None:
-        await self.stats.add_review(repo_name=webhook_data.repo_full_name)
         requested_diff = await self.git_port.fetch_diff(
             repo=webhook_data.repo_full_name,
             index=webhook_data.pr_number,

@@ -9,8 +9,7 @@ from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
     GigaChatAdapter,
     get_gigachat_adapter,
 )
-
-from ..base import BaseAIPort
+from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class GigaChatPort(BaseAIPort):

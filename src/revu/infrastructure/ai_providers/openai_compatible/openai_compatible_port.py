@@ -7,8 +7,7 @@ from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapte
     OpenAICompatibleAdapter,
     get_openai_compatible_adapter,
 )
-
-from ..base import BaseAIPort
+from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class OpenAICompatiblePort(BaseAIPort):

@@ -7,8 +7,7 @@ from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import (
     YandexGPTAdapter,
     get_yandexgpt_adapter,
 )
-
-from ..base import BaseAIPort
+from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class YandexGPTPort(BaseAIPort):

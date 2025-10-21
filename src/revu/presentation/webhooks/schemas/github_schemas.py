@@ -38,38 +38,25 @@ class BitBucketPullRequestWebhook(GithubPullRequestWebhook):
     pass
 
 
-_ = {
-    'pullRequest': {
-        'id': 1,
-        'title': 'title',
-        'toRef': {
-            'latestCommit': 'sha',
-            'repository': {
-                'slug': 'name',
-                'project': {
-                    'key': 'project'
-                }
-            }
-        }
-    }
-}
-
-
 class _BBPR(BaseModel):
     key: str
+
 
 class _BBRP(BaseModel):
     slug: str
     project: _BBPR
 
+
 class _BBTR(BaseModel):
     latestCommit: str
     repository: _BBRP
+
 
 class _BBPlR(BaseModel):
     id: int
     title: str
     toRef: _BBTR
+
 
 class BitBucketRawPullRequestWebhook(BaseModel):
     eventKey: str  # 'pr:modified' / 'pr:opened'
@@ -77,7 +64,7 @@ class BitBucketRawPullRequestWebhook(BaseModel):
 
     def to_bb(self) -> BitBucketPullRequestWebhook:
         return BitBucketPullRequestWebhook(
-            action=PullRequestActionEnum.OPENED if self.eventKey == 'pr:opened' else PullRequestActionEnum.REOPENED,
+            action=PullRequestActionEnum.OPENED if self.eventKey == "pr:opened" else PullRequestActionEnum.REOPENED,
             pull_request=PullRequest(
                 number=self.pullRequest.id,
                 head=Branch(sha=self.pullRequest.toRef.latestCommit),
@@ -86,5 +73,5 @@ class BitBucketRawPullRequestWebhook(BaseModel):
             ),
             repository=Repo(
                 full_name=f"{self.pullRequest.toRef.repository.project.key}/repos/{self.pullRequest.toRef.repository.slug}"
-            )
+            ),
         )

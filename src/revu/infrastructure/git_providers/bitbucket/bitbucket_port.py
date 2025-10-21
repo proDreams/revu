@@ -7,7 +7,7 @@ from revu.infrastructure.http_client.http_client_gateway import (
     HttpClientGateway,
     get_http_gateway,
 )
-from .helpers import json_diff_to_unified
+from revu.infrastructure.git_providers.bitbucket.helpers import json_diff_to_unified
 
 
 class BitbucketPort(GitProviderProtocol):
