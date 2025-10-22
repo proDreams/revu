@@ -1,11 +1,9 @@
-PREFIX = {
-    'CONTEXT': ' ',
-    'ADDED': '+',
-    'REMOVED': '-'
-}
-
-
 def json_diff_to_unified(diff_json) -> str:
+    prefix_replacer = {
+        'CONTEXT': ' ',
+        'ADDED': '+',
+        'REMOVED': '-'
+    }
     lines = []
     for file_diff in diff_json['diffs']:
         src = (file_diff.get('source') or {}).get('toString', '/dev/null')
@@ -23,7 +21,7 @@ def json_diff_to_unified(diff_json) -> str:
             lines.append(f"@@ -{src_start},{src_span} +{dst_start},{dst_span} @@")
             
             for segment in hunk['segments']:
-                prefix = PREFIX[segment['type']]
+                prefix = prefix_replacer[segment['type']]
                 for line in segment['lines']:
                     lines.append(f"{prefix}{line.get('line', '')}")
     return '\n'.join(lines)
