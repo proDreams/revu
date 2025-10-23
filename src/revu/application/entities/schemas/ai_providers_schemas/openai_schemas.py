@@ -12,6 +12,13 @@ class GiteaReviewComment(BaseModel):
     old_position: int
     new_position: int
     body: str
+    
+    
+class BitbucketReviewComment(BaseModel):
+    path: str
+    position: int
+    body: str
+    lineType: str
 
 
 class ReviewResponse(BaseModel):
@@ -24,3 +31,7 @@ class GithubReviewResponse(ReviewResponse):
 
 class GiteaReviewResponse(ReviewResponse):
     comments: list[GiteaReviewComment]
+    
+
+class BitbucketReviewResponse(ReviewResponse):
+    comments: list[BitbucketReviewComment]

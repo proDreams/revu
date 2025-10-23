@@ -6,16 +6,18 @@ from starlette import status
 
 from revu.application.services.webhook_service import WebhookService
 from revu.presentation.webhooks.di import get_webhook_service
-from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain
+from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain, bitbucket_to_domain
 from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
     GitVersePullRequestWebhook,
+    BitBucketRawPullRequestWebhook,
 )
 from revu.presentation.webhooks.validators import (
     gitverse_validate_authorization,
     parse_gitea_webhook,
     parse_github_webhook,
+    parse_bitbucket_webhook,
 )
 
 webhooks_router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -38,6 +40,17 @@ async def gitea_webhook(
     service: Annotated[WebhookService, Depends(get_webhook_service)],
 ) -> None:
     domain_event = gitea_to_domain(event=webhook_data)
+    background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
+
+
+@webhooks_router.post(path="/bitbucket", status_code=status.HTTP_200_OK)
+async def bitbucket_webhook(
+    webhook_data: Annotated[BitBucketRawPullRequestWebhook, Depends(parse_bitbucket_webhook)],
+    background_tasks: BackgroundTasks,
+    service: Annotated[WebhookService, Depends(get_webhook_service)],
+) -> None:
+    _webhook_data = webhook_data.to_bb()
+    domain_event = bitbucket_to_domain(event=_webhook_data)
     background_tasks.add_task(service.process_webhook, webhook_data=domain_event)
 
 

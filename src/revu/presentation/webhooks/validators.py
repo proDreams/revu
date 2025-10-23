@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.status import HTTP_403_FORBIDDEN
 
 from revu.application.config import get_settings
+from revu.presentation.webhooks.routes import BitBucketRawPullRequestWebhook
 from revu.presentation.webhooks.schemas.github_schemas import (
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
@@ -46,6 +47,25 @@ async def parse_github_webhook(request: Request) -> GithubPullRequestWebhook:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     return GithubPullRequestWebhook.model_validate(payload_dict)
+
+
+async def parse_bitbucket_webhook(request: Request) -> BitBucketRawPullRequestWebhook:
+    body = await request.body()
+
+    try:
+        payload_dict = json.loads(body)
+        reviewer = get_settings().GIT_PROVIDER_CONFIG.get('GIT_PROVIDER_REVIEWER', None)
+        if reviewer is not None:
+            if reviewer not in [k['user']['name'] for k in payload_dict['pullRequest']['reviewers']] \
+            and reviewer not in [k['user']['emailAddress'] for k in payload_dict['pullRequest']['reviewers']] \
+            and reviewer not in [k['user']['displayName'] for k in payload_dict['pullRequest']['reviewers']]:
+                raise HTTPException(status_code=200, detail="Review not needed")
+        if payload_dict['eventKey'] not in ('pr:modified', 'pr:opened'):
+            raise HTTPException(status_code=200, detail="Review not needed")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    return BitBucketRawPullRequestWebhook.model_validate(payload_dict)
 
 
 async def parse_gitea_webhook(request: Request) -> GiteaPullRequestWebhook:
