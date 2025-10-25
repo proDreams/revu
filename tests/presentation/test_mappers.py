@@ -3,11 +3,13 @@ import pytest
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 from revu.presentation.webhooks.mappers import (
+    bitbucket_to_domain,
     gitea_to_domain,
     github_to_domain,
     gitverse_to_domain,
 )
 from revu.presentation.webhooks.schemas.github_schemas import (
+    BitBucketPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
     GitVersePullRequestWebhook,
@@ -40,4 +42,10 @@ def test_gitea_to_domain_uses_same_mapping():
 def test_gitverse_to_domain_uses_same_mapping():
     schema = GitVersePullRequestWebhook(**VALID_WEBHOOK_PAYLOAD)
     dto = gitverse_to_domain(event=schema)
+    assert isinstance(dto, PullRequestEventDTO)
+
+
+def test_bitbucket_to_domain_uses_same_mapping():
+    schema = BitBucketPullRequestWebhook(**VALID_WEBHOOK_PAYLOAD)
+    dto = bitbucket_to_domain(event=schema)
     assert isinstance(dto, PullRequestEventDTO)

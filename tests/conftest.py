@@ -10,6 +10,7 @@ def settings(monkeypatch):
             GIT_PROVIDER_USER_TOKEN="test-token",
             GIT_PROVIDER_URL="https://example.com",
             GIT_PROVIDER_SECRET_TOKEN="secret",
+            GIT_PROVIDER_REVIEWER="bot",
         ),
         AI_PROVIDER_CONFIG=Dynaconf(
             AI_PROVIDER="openai",
@@ -42,5 +43,8 @@ def settings(monkeypatch):
     monkeypatch.setattr("revu.presentation.webhooks.validators.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.gitea.gitea_port.get_settings", lambda: fake_settings)
     monkeypatch.setattr("revu.infrastructure.git_providers.github.github_port.get_settings", lambda: fake_settings)
+    monkeypatch.setattr(
+        "revu.infrastructure.git_providers.bitbucket.bitbucket_port.get_settings", lambda: fake_settings
+    )
 
     return fake_settings

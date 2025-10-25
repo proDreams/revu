@@ -1,6 +1,7 @@
 import pytest
 
 from revu.domain.entities.dto.ai_provider_dto import (
+    BitBucketReviewCommentDTO,
     GiteaReviewCommentDTO,
     GithubReviewCommentDTO,
     ReviewResponseDTO,
@@ -43,6 +44,23 @@ def test_create_gitea_response_ai_provider_dto():
     assert dto.general_comment == general_comment
     assert dto.comments[1].path == "test path 2"
     assert dto.comments[0].new_position == 1
+
+
+def test_create_bitbucket_response_ai_provider_dto():
+    general_comment = "test comment"
+    comments = [
+        {"path": "test path", "lineType": "test lineType", "position": 1, "body": "test body"},
+        {"path": "test path 2", "lineType": "test lineType 2", "position": 2, "body": "test body 2"},
+    ]
+    git_provider = "bitbucket"
+
+    dto = ReviewResponseDTO.from_request(general_comment=general_comment, comments=comments, git_provider=git_provider)
+
+    assert isinstance(dto, ReviewResponseDTO)
+    assert isinstance(dto.comments[0], BitBucketReviewCommentDTO)
+    assert dto.general_comment == general_comment
+    assert dto.comments[1].path == "test path 2"
+    assert dto.comments[0].lineType == "test lineType"
 
 
 def test_create_unknown_response_ai_provider_dto():

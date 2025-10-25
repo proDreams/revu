@@ -7,17 +7,22 @@ from fastapi import HTTPException
 from starlette import status
 
 from revu.presentation.webhooks.schemas.github_schemas import (
+    BitBucketRawPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
 )
 from revu.presentation.webhooks.validators import (
     gitverse_validate_authorization,
+    parse_bitbucket_webhook,
     parse_gitea_webhook,
     parse_github_webhook,
     verify_github_webhook,
 )
 from tests.fixtures.presentation_fixtures.fake_request import make_request
-from tests.fixtures.presentation_fixtures.payloads import VALID_WEBHOOK_PAYLOAD
+from tests.fixtures.presentation_fixtures.payloads import (
+    VALID_BITBUCKET_PAYLOAD,
+    VALID_WEBHOOK_PAYLOAD,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -132,3 +137,54 @@ async def test_invalid_gitverse_authorization():
 
     assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
     assert "Invalid authorization token" in exc_info.value.detail
+
+
+async def test_valid_parse_bitbucket_webhook(settings, monkeypatch):
+    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
+
+    monkeypatch.setattr(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
+
+    request = await make_request(body=body, headers={})
+    result = await parse_bitbucket_webhook(request=request)
+
+    assert isinstance(result, BitBucketRawPullRequestWebhook)
+
+
+async def test_invalid_json_parse_bitbucket_webhook():
+    body = b"broken JSON"
+    request = await make_request(body=body, headers={})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await parse_bitbucket_webhook(request=request)
+
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Invalid JSON payload" in exc_info.value.detail
+
+
+async def test_parse_bitbucket_webhook_reviewer_not_needed(settings, monkeypatch):
+    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
+    monkeypatch.setattr(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "someone_else")
+
+    request = await make_request(body=body, headers={})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await parse_bitbucket_webhook(request=request)
+
+    assert exc_info.value.status_code == status.HTTP_200_OK
+    assert "Review not needed" in exc_info.value.detail
+
+
+async def test_parse_bitbucket_webhook_event_not_needed(settings, monkeypatch):
+    payload = VALID_BITBUCKET_PAYLOAD.copy()
+    payload["eventKey"] = "pr:merged"
+    body = json.dumps(payload).encode()
+
+    monkeypatch.setattr(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
+
+    request = await make_request(body=body, headers={})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await parse_bitbucket_webhook(request=request)
+
+    assert exc_info.value.status_code == status.HTTP_200_OK
+    assert "Review not needed" in exc_info.value.detail
