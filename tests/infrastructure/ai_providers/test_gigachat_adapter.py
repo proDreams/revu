@@ -11,7 +11,7 @@ async def test_gigachat_adapter_returns_sdk_response(settings, monkeypatch):
 
     adapter = GigaChatAdapter()
     adapter._gigachat_client = AsyncMock()
-    adapter._gigachat_client.chat.return_value = fake_response
+    adapter._gigachat_client.achat.return_value = fake_response
 
     payload = Chat(
         messages=[
@@ -23,4 +23,4 @@ async def test_gigachat_adapter_returns_sdk_response(settings, monkeypatch):
     resp = await adapter.get_chat_response(payload=payload)
 
     assert resp == "test"
-    adapter._gigachat_client.chat.assert_awaited_once_with(payload=payload)
+    adapter._gigachat_client.achat.assert_awaited_once_with(payload=payload)

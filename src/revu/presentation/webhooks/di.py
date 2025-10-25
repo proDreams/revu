@@ -24,6 +24,10 @@ from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_port import (
     YandexGPTPort,
     get_yandexgpt_port,
 )
+from revu.infrastructure.git_providers.bitbucket.bitbucket_port import (
+    BitbucketPort,
+    get_bitbucket_port,
+)
 from revu.infrastructure.git_providers.gitea.gitea_port import (
     GiteaPort,
     get_gitea_port,
@@ -34,12 +38,14 @@ from revu.infrastructure.git_providers.github.github_port import (
 )
 
 
-def get_git_provider_port() -> GithubPort | GiteaPort:
+def get_git_provider_port() -> GithubPort | GiteaPort | BitbucketPort:
     match get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER:
         case GitProviderEnum.GITHUB:
             return get_github_port()
         case GitProviderEnum.GITEA:
             return get_gitea_port()
+        case GitProviderEnum.BITBUCKET:
+            return get_bitbucket_port()
         case _:
             raise GitProviderException("Unknown GIT provider")
 

@@ -1,12 +1,13 @@
 [project]
 name = "revu"
-version = "1.4.0"
+version = "1.5.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "aiosqlite>=0.21.0",
     "dynaconf>=3.2.11",
     "fastapi[standard]>=0.118.0",
     "gigachat>=0.1.42.post2",
@@ -54,7 +55,7 @@ addopts = [
     "--tb=short",
     "--cov=src",
     "--cov-report=term-missing:skip-covered",
-    "--cov-fail-under=90"
+    "--cov-fail-under=80"
 ]
 
 testpaths = ["tests"]

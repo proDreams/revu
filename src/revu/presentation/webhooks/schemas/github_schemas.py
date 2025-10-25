@@ -32,3 +32,46 @@ class GiteaPullRequestWebhook(GithubPullRequestWebhook):
 
 class GitVersePullRequestWebhook(GithubPullRequestWebhook):
     pass
+
+
+class BitBucketPullRequestWebhook(GithubPullRequestWebhook):
+    pass
+
+
+class _BBPR(BaseModel):
+    key: str
+
+
+class _BBRP(BaseModel):
+    slug: str
+    project: _BBPR
+
+
+class _BBTR(BaseModel):
+    latestCommit: str
+    repository: _BBRP
+
+
+class _BBPlR(BaseModel):
+    id: int
+    title: str
+    toRef: _BBTR
+
+
+class BitBucketRawPullRequestWebhook(BaseModel):
+    eventKey: str  # 'pr:modified' / 'pr:opened'
+    pullRequest: _BBPlR
+
+    def to_bb(self) -> BitBucketPullRequestWebhook:
+        return BitBucketPullRequestWebhook(
+            action=PullRequestActionEnum.OPENED if self.eventKey == "pr:opened" else PullRequestActionEnum.REOPENED,
+            pull_request=PullRequest(
+                number=self.pullRequest.id,
+                head=Branch(sha=self.pullRequest.toRef.latestCommit),
+                title=self.pullRequest.title,
+                body=None,
+            ),
+            repository=Repo(
+                full_name=f"{self.pullRequest.toRef.repository.project.key}/repos/{self.pullRequest.toRef.repository.slug}"
+            ),
+        )
