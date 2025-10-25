@@ -14,6 +14,8 @@ GIT_PROVIDER_CONFIG:
   GIT_PROVIDER_URL: "https://example.com"
   # GIT_PROVIDER_SECRET_TOKEN — secret token to validate incoming webhooks
   GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
+  # GIT_PROVIDER_REVIEWER — username of the bot/user, which should be in reviewers for AI review to run (Only BitBucket)
+  GIT_PROVIDER_REVIEWER: "slug"
 
 AI_PROVIDER_CONFIG:
   # AI_PROVIDER — which AI API you use:
