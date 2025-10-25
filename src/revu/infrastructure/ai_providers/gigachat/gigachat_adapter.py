@@ -7,7 +7,7 @@ from revu.application.config import get_settings
 class GigaChatAdapter:
     def __init__(self) -> None:
         self._gigachat_client = GigaChat(
-            credentials=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,    # type: ignore
+            credentials=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,  # type: ignore
             scope=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_SCOPE,  # type: ignore
             model=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL,  # type: ignore
         )

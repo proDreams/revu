@@ -24,6 +24,10 @@ from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_port import (
     YandexGPTPort,
     get_yandexgpt_port,
 )
+from revu.infrastructure.git_providers.bitbucket.bitbucket_port import (
+    BitbucketPort,
+    get_bitbucket_port,
+)
 from revu.infrastructure.git_providers.gitea.gitea_port import (
     GiteaPort,
     get_gitea_port,
@@ -31,10 +35,6 @@ from revu.infrastructure.git_providers.gitea.gitea_port import (
 from revu.infrastructure.git_providers.github.github_port import (
     GithubPort,
     get_github_port,
-)
-from revu.infrastructure.git_providers.bitbucket.bitbucket_port import (
-    BitbucketPort,
-    get_bitbucket_port
 )
 
 

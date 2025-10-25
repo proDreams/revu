@@ -6,18 +6,22 @@ from starlette import status
 
 from revu.application.services.webhook_service import WebhookService
 from revu.presentation.webhooks.di import get_webhook_service
-from revu.presentation.webhooks.mappers import gitea_to_domain, github_to_domain, bitbucket_to_domain
+from revu.presentation.webhooks.mappers import (
+    bitbucket_to_domain,
+    gitea_to_domain,
+    github_to_domain,
+)
 from revu.presentation.webhooks.schemas.github_schemas import (
+    BitBucketRawPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
     GitVersePullRequestWebhook,
-    BitBucketRawPullRequestWebhook,
 )
 from revu.presentation.webhooks.validators import (
     gitverse_validate_authorization,
+    parse_bitbucket_webhook,
     parse_gitea_webhook,
     parse_github_webhook,
-    parse_bitbucket_webhook,
 )
 
 webhooks_router = APIRouter(prefix="/webhooks", tags=["Webhooks"])

@@ -1,13 +1,14 @@
 import json
+
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import (
     YandexGPTAdapter,
     get_yandexgpt_adapter,
 )
-from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class YandexGPTPort(BaseAIPort):
@@ -21,7 +22,7 @@ class YandexGPTPort(BaseAIPort):
 
     async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
         system_prompt = self.system_prompt or self._get_comment_prompt()
-        
+
         messages = self._get_messages(
             system_prompt=system_prompt,
             user_prompt=self._get_diff_prompt(pr_title, pr_body, diff),

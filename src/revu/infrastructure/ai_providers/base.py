@@ -20,9 +20,10 @@ from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 
 class BaseAIPort(AIProviderProtocol):
     def __init__(self):
-        self.system_prompt=str(get_settings().SYSTEM_PROMPT) if get_settings().SYSTEM_PROMPT else None
-    
-    def _get_prompt(self, git_provider: str) -> str:
+        self.system_prompt = str(get_settings().SYSTEM_PROMPT) if get_settings().SYSTEM_PROMPT else None
+
+    @staticmethod
+    def _get_prompt(git_provider: str) -> str:
         match git_provider:
             case GitProviderEnum.GITHUB:
                 return GITHUB_INLINE_PROMPT
@@ -32,16 +33,19 @@ class BaseAIPort(AIProviderProtocol):
                 return BITBUCKET_INLINE_PROMPT
             case _:
                 raise UnknownGitProvider("unknown git provider")
-    
-    def _get_comment_prompt(self) -> str:
+
+    @staticmethod
+    def _get_comment_prompt() -> str:
         """Return the default comment prompt"""
         return COMMENT_PROMPT
-    
-    def _get_diff_prompt(self, pr_title: str, pr_body: str | None, diff: str) -> str:
+
+    @staticmethod
+    def _get_diff_prompt(pr_title: str, pr_body: str | None, diff: str) -> str:
         """Format the diff prompt with provided parameters"""
         return DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff)
-    
-    def _get_response_model(self, git_provider: str):
+
+    @staticmethod
+    def _get_response_model(git_provider: str):
         match git_provider:
             case GitProviderEnum.GITHUB:
                 return GithubReviewResponse

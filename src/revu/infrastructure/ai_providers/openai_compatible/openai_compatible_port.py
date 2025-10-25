@@ -2,12 +2,13 @@ from openai.types.chat import (
     ChatCompletionSystemMessageParam,
     ChatCompletionUserMessageParam,
 )
+
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapter import (
     OpenAICompatibleAdapter,
     get_openai_compatible_adapter,
 )
-from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class OpenAICompatiblePort(BaseAIPort):
@@ -39,7 +40,7 @@ class OpenAICompatiblePort(BaseAIPort):
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
     ) -> ReviewResponseDTO:
         system_prompt = self._get_prompt(git_provider)
-        
+
         if self.system_prompt:
             system_prompt = self.system_prompt
 
@@ -59,7 +60,6 @@ class OpenAICompatiblePort(BaseAIPort):
             comments=[comment.model_dump() for comment in parsed_output.comments],  # type: ignore
             git_provider=git_provider,
         )
-    
 
 
 def get_openai_compatible_port() -> OpenAICompatiblePort:

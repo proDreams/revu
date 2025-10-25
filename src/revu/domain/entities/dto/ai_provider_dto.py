@@ -18,8 +18,8 @@ class GiteaReviewCommentDTO:
     old_position: int
     new_position: int
     body: str
-    
-    
+
+
 @dataclass
 class BitBucketReviewCommentDTO:
     path: str
@@ -46,7 +46,7 @@ class ReviewResponseDTO:
                     general_comment=general_comment,
                     comments=[GiteaReviewCommentDTO(**comment) for comment in comments],
                 )
-            case 'bitbucket':
+            case "bitbucket":
                 return cls(
                     general_comment=general_comment,
                     comments=[BitBucketReviewCommentDTO(**comment) for comment in comments],

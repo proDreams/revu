@@ -11,6 +11,7 @@ from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_port i
     OpenAICompatiblePort,
 )
 from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_port import YandexGPTPort
+from revu.infrastructure.git_providers.bitbucket.bitbucket_port import BitbucketPort
 from revu.infrastructure.git_providers.gitea.gitea_port import GiteaPort
 from revu.infrastructure.git_providers.github.github_port import GithubPort
 from revu.presentation.webhooks.di import (
@@ -34,6 +35,13 @@ def test_git_provider_gitea(monkeypatch, settings):
 
     port = get_git_provider_port()
     assert isinstance(port, GiteaPort)
+
+
+def test_git_provider_bitbucket(monkeypatch, settings):
+    settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER"] = "bitbucket"
+
+    port = get_git_provider_port()
+    assert isinstance(port, BitbucketPort)
 
 
 def test_unknown_git_provider(monkeypatch, settings):

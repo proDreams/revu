@@ -2,6 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from revu.presentation.webhooks.schemas.github_schemas import (
+    BitBucketPullRequestWebhook,
+    BitBucketRawPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
     GitVersePullRequestWebhook,
@@ -9,6 +11,7 @@ from revu.presentation.webhooks.schemas.github_schemas import (
 from tests.fixtures.presentation_fixtures.payloads import (
     INVALID_ACTION_WEBHOOK_PAYLOAD,
     INVALID_WEBHOOK_PAYLOAD,
+    VALID_BITBUCKET_PAYLOAD,
     VALID_WEBHOOK_PAYLOAD,
 )
 
@@ -30,6 +33,14 @@ def test_gitea_webhook_schema_accepts_valid_payload():
 def test_gitverse_webhook_schema_accepts_valid_payload():
     schema = GitVersePullRequestWebhook(**VALID_WEBHOOK_PAYLOAD)
     assert isinstance(schema, GitVersePullRequestWebhook)
+
+
+def test_bitbucket_webhook_schema_accepts_valid_payload():
+    schema = BitBucketRawPullRequestWebhook(**VALID_BITBUCKET_PAYLOAD)
+    assert isinstance(schema, BitBucketRawPullRequestWebhook)
+
+    bb_schema = schema.to_bb()
+    assert isinstance(bb_schema, BitBucketPullRequestWebhook)
 
 
 def test_github_webhook_schema_raises_invalid_action():

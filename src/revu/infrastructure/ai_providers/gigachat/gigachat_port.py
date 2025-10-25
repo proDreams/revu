@@ -1,19 +1,21 @@
 import json
 
 from gigachat.models import Chat, Messages, MessagesRole
+
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
     GigaChatAdapter,
     get_gigachat_adapter,
 )
-from revu.infrastructure.ai_providers.base import BaseAIPort
 
 
 class GigaChatPort(BaseAIPort):
     def __init__(self, adapter: GigaChatAdapter) -> None:
+        super().__init__()
         self.adapter = adapter
 
     @staticmethod
