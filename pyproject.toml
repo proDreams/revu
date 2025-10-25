@@ -1,6 +1,6 @@
 [project]
 name = "revu"
-version = "1.4.0"
+version = "1.5.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
