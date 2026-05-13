@@ -1,4 +1,4 @@
-from yandex_cloud_ml_sdk import AsyncYCloudML
+from yandex_ai_studio_sdk import AsyncAIStudio
 
 from revu.application.config import get_settings
 from revu.application.entities.exceptions.ai_adapters_exceptions import NoAIResponse
@@ -7,7 +7,7 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import NoAIResp
 class YandexGPTAdapter:
     def __init__(self) -> None:
         self._ai_provider_config = get_settings().AI_PROVIDER_CONFIG
-        self._yandexgpt_client = AsyncYCloudML(
+        self._yandexgpt_client = AsyncAIStudio(
             folder_id=self._ai_provider_config.AI_PROVIDER_FOLDER_ID,
             auth=self._ai_provider_config.AI_PROVIDER_API_KEY,  # type: ignore
         )
