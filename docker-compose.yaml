@@ -12,3 +12,36 @@ services:
     volumes:
       - ./revu_logs:/code/logs
       - ./settings.yaml:/code/config/settings.yaml
+
+    # ── Behind Traefik? ────────────────────────────────────────────────────────
+    # Uncomment the labels below, uncomment the service network at the end of this
+    # file, and replace the host name with your own. Traefik terminates TLS, so the
+    # container only ever speaks plain HTTP on 8000.
+    #
+    # labels:
+    #   - "traefik.enable=true"
+    #   - "traefik.docker.network=traefik-net"
+    #   - "traefik.http.routers.revu.rule=Host(`revu.example.com`)"
+    #   - "traefik.http.routers.revu.entrypoints=websecure"
+    #   - "traefik.http.routers.revu.tls=true"
+    #   - "traefik.http.routers.revu.tls.certresolver=letsencrypt"
+    #   - "traefik.http.services.revu.loadbalancer.server.port=8000"
+    #
+    # networks:
+    #   - traefik-net
+
+    # ── No reverse proxy? ──────────────────────────────────────────────────────
+    # Publish the port instead, then point Caddy, NGINX or a git host on this
+    # machine at 127.0.0.1:8000:
+    #
+    # ports:
+    #   - "8000:8000"
+
+# ── The Traefik network ────────────────────────────────────────────────────────
+# Uncomment together with the labels above. `external: true` means the network has
+# to exist already (`docker network create traefik-net`), otherwise
+# `docker compose up` refuses to start.
+#
+# networks:
+#   traefik-net:
+#     external: true
