@@ -52,9 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and GitLab, the reviewer name or `permittedOperations.canEdit` on Bitbucket):
   the signature answers that question, so a review makes fewer requests and cannot
   be misled by a shared account.
-- Comments published before this version carry no signature and are therefore not
-  recognised as ReVu's. A repeated review of an old pull request starts from the
-  diff, exactly as it did before this release.
+- A comment without the signature is not ReVu's, so a pull request reviewed by an
+  older release is simply reviewed from the diff.
 - A pull request without a description no longer reaches the model as the literal
   `None`.
 
