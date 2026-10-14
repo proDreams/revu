@@ -1,7 +1,10 @@
 # Release: cut a version tag, get a GitHub Release whose notes are the changelog,
 # and an image that is exactly the commit the tag points at.
 #
-# Triggered by a version tag (`v2.4.0`) or manually from the Actions tab. Two guards
+# Triggered by a version tag or manually from the Actions tab. Both spellings are
+# accepted — `2.4.0` and `v2.4.0` — because this repository's tags (1.0.0 through
+# 1.5.0) carry no `v`, while a `v` is the more common convention elsewhere; the
+# trigger lists both and the version is compared with the `v` stripped. Two guards
 # run before anything is built or published:
 #   * on a tag push the tag must equal `version` in pyproject.toml;
 #   * CHANGELOG.md must carry a `## [<version>]` section, which becomes the Release
@@ -31,7 +34,8 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "[0-9]*" # this repository's convention: 2.4.0
+      - "v[0-9]*" # and the other one: v2.4.0
   # Manual recovery path: releases the version currently in pyproject.toml from the
   # default branch. Use it when a tag push went up together with this workflow file,
   # or to re-run a release that failed partway.
@@ -58,17 +62,22 @@ jobs:
         run: |
           version="$(python3 -c "import pathlib, tomllib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "Manual run: releasing v${version} from pyproject.toml"
+            # Nothing was tagged, so the release creates the tag this repository uses.
+            tag="${version}"
+            echo "Manual run: releasing ${tag} from pyproject.toml"
           else
-            tag="${GITHUB_REF_NAME#v}"
-            if [ "$tag" != "$version" ]; then
-              echo "::error::tag v${tag} does not match the version ${version} in pyproject.toml"
+            # Release the tag that was pushed rather than a name rebuilt from the
+            # version: `2.4.0` and `v2.4.0` are both accepted, and the release has to
+            # point at the one that exists. Only the version is compared.
+            tag="${GITHUB_REF_NAME}"
+            if [ "${tag#v}" != "$version" ]; then
+              echo "::error::tag ${tag} does not match the version ${version} in pyproject.toml"
               exit 1
             fi
-            echo "Tag v${tag} matches pyproject.toml"
+            echo "Tag ${tag} matches pyproject.toml"
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Extract release notes from CHANGELOG.md
         env:
