@@ -57,6 +57,9 @@ class ReviewOutcome:
     mode: ReviewModeEnum
     #: How many comments reached the publisher.
     published: int
+    #: Inline findings, which is what a quality gate can count. Comment mode says
+    #: its piece in prose and reports none: there is nothing structured to gate on.
+    findings: int
     #: Inline comments thrown away because their lines are not in the diff.
     dropped: int
     #: Whether this was a follow-up to an earlier review.
@@ -133,6 +136,7 @@ class ReviewRunner:
                 return ReviewOutcome(
                     mode=config.review_mode,
                     published=1,
+                    findings=0,
                     dropped=0,
                     re_review=re_review,
                     code_context=code_context,
@@ -168,6 +172,7 @@ class ReviewRunner:
                 return ReviewOutcome(
                     mode=config.review_mode,
                     published=len(dto_review.comments),
+                    findings=len(dto_review.comments),
                     dropped=dropped,
                     re_review=re_review,
                     code_context=code_context,

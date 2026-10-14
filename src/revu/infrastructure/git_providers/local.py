@@ -143,3 +143,28 @@ class LocalGitPort:
             raise GitCommandError(f"git {' '.join(args)} failed: {message}")
 
         return stdout
+
+
+class StaticDiffReader:
+    """A reader whose diff is given rather than computed.
+
+    `--diff-file` replays a diff saved earlier — from another review, from a test,
+    or from a machine with no checkout at all. Only the change is fixed: the files
+    a deep review wants still come from the checkout through `inner`.
+    """
+
+    def __init__(self, diff: str, inner: GitReaderProtocol) -> None:
+        self._diff = diff
+        self._inner = inner
+
+    async def fetch_diff(self, repo: str, index: int) -> str:
+        return self._diff
+
+    async def fetch_review_context(self, repo: str, index: int) -> ReviewContextDTO | None:
+        return await self._inner.fetch_review_context(repo=repo, index=index)
+
+    async def fetch_file(self, repo: str, path: str, revision: str) -> str | None:
+        return await self._inner.fetch_file(repo=repo, path=path, revision=revision)
+
+    async def list_files(self, repo: str, revision: str) -> tuple[str, ...]:
+        return await self._inner.list_files(repo=repo, revision=revision)

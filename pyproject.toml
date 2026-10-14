@@ -69,6 +69,7 @@ build-backend = "uv_build"
 
 [project.scripts]
 app = "revu.runner:run"
+revu = "revu.presentation.cli.main:main"
 
 [project.optional-dependencies]
 pytest = [

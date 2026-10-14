@@ -10,7 +10,11 @@ from revu.domain.entities.dto.review_context_dto import (
     PreviousCommentDTO,
     ReviewContextDTO,
 )
-from revu.infrastructure.git_providers.local import GitCommandError, LocalGitPort
+from revu.infrastructure.git_providers.local import (
+    GitCommandError,
+    LocalGitPort,
+    StaticDiffReader,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -194,3 +198,17 @@ async def test_a_file_that_cannot_be_read_is_not_a_crash(monkeypatch, port, chec
     monkeypatch.setattr(Path, "read_text", refuse)
 
     assert await port.fetch_file(repo=REPO, path="locked.py", revision="HEAD") is None
+
+
+async def test_a_saved_diff_replaces_only_the_change():
+    """`--diff-file` fixes the diff; the files still come from the checkout."""
+    inner = AsyncMock()
+    inner.fetch_file.return_value = "file text"
+    inner.list_files.return_value = ("a.py",)
+    inner.fetch_review_context.return_value = None
+    reader = StaticDiffReader(diff="the saved diff", inner=inner)
+
+    assert await reader.fetch_diff(repo=REPO, index=1) == "the saved diff"
+    assert await reader.fetch_file(repo=REPO, path="a.py", revision="HEAD") == "file text"
+    assert await reader.list_files(repo=REPO, revision="HEAD") == ("a.py",)
+    assert await reader.fetch_review_context(repo=REPO, index=1) is None
