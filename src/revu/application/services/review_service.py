@@ -3,6 +3,7 @@ from dataclasses import replace
 from unidiff import PatchSet
 
 from revu.application.config import get_logger
+from revu.application.entities import review_marker
 from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
@@ -70,15 +71,15 @@ class ReviewService:
         return ReviewContextDTO(comments=context.findings)
 
     @staticmethod
-    def _with_progress(review: ReviewResponseDTO, context: ReviewContextDTO | None) -> ReviewResponseDTO:
-        """Say how many earlier findings were addressed.
+    def _progress_line(review: ReviewResponseDTO, context: ReviewContextDTO | None) -> str | None:
+        """How many earlier findings were addressed, when that can be said.
 
         The total is ReVu's own count, so a model reporting fewer findings cannot
-        shrink it; a model reporting none at all gets no line rather than a claim
-        of zero fixes.
+        shrink it; a model reporting none at all gets no line rather than a claim of
+        zero fixes.
         """
         if context is None or not context.findings:
-            return review
+            return None
 
         total = len(context.findings)
         reported = review.previous_findings or []
@@ -86,13 +87,41 @@ class ReviewService:
         if not reported:
             logger.warning("no status reported for %d earlier findings; omitting the progress line", total)
 
-            return review
+            return None
 
         fixed = min(sum(1 for finding in reported if finding.is_fixed), total)
-        summary = f"📊 Из прошлых замечаний исправлено: {fixed} из {total}."
-        summary += " Все замечания закрыты." if fixed == total else f" Осталось: {total - fixed}."
+        line = f"📊 Из прошлых замечаний исправлено: {fixed} из {total}."
 
-        return replace(review, general_comment=f"{summary}\n\n{review.general_comment}")
+        return line + (" Все замечания закрыты." if fixed == total else f" Осталось: {total - fixed}.")
+
+    @staticmethod
+    def _is_re_review(context: ReviewContextDTO | None) -> bool:
+        return context is not None and bool(context.findings)
+
+    @classmethod
+    def _sign_inline_review(
+        cls,
+        review: ReviewResponseDTO,
+        context: ReviewContextDTO | None,
+    ) -> ReviewResponseDTO:
+        """Headline and sign the review, and sign every inline comment in it.
+
+        The signature is what lets a later review tell ReVu's own words from the
+        author's, which matters most when both use the same account.
+        """
+        progress = cls._progress_line(review, context)
+        lines = [review_marker.header(re_review=cls._is_re_review(context))]
+        lines.extend(line for line in (progress, review.general_comment) if line)
+        comments = [replace(comment, body=review_marker.sign_inline(comment.body)) for comment in review.comments]
+
+        return replace(review, general_comment=review_marker.mark("\n".join(lines)), comments=comments)
+
+    @staticmethod
+    def _sign_summary(text: str, context: ReviewContextDTO | None) -> str:
+        """Comment mode publishes one comment; the model reports progress in its text."""
+        header = review_marker.header(re_review=ReviewService._is_re_review(context))
+
+        return review_marker.mark(f"{header}\n\n{text}")
 
     async def _run_review(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
         diff = await tenant.git_port.fetch_diff(
@@ -117,7 +146,7 @@ class ReviewService:
 
                 await tenant.git_port.send_comment(
                     repo_owner=webhook_data.repo_full_name,
-                    review=str_review,
+                    review=self._sign_summary(str_review, context),
                     index=webhook_data.pr_number,
                 )
             case ReviewModeEnum.INLINE:
@@ -125,7 +154,7 @@ class ReviewService:
 
                 dto_review = await tenant.ai_port.get_inline_response(replace(task, diff=annotated_diff))
 
-                dto_review = self._with_progress(dto_review, context)
+                dto_review = self._sign_inline_review(dto_review, context)
 
                 dto_review, dropped = drop_unanchored_comments(
                     dto_review,

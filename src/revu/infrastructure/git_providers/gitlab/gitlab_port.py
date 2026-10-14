@@ -5,6 +5,7 @@ from revu.application.entities.config import GitConnectionConfig
 from revu.application.entities.exceptions.provider_exceptions import (
     GitProviderException,
 )
+from revu.application.entities.review_marker import clean, is_marked
 from revu.domain.entities.dto.ai_provider_dto import (
     GitLabReviewCommentDTO,
     ReviewResponseDTO,
@@ -47,7 +48,6 @@ class GitlabPort(GitProviderProtocol):
         self.config = config
         self.gitlab_token = config.user_token
         self.gitlab_url = config.base_url or self.DEFAULT_API_URL
-        self._username: str | None = None
 
     def _get_headers(self) -> dict[str, str]:
         return {"PRIVATE-TOKEN": self.gitlab_token}
@@ -88,27 +88,14 @@ class GitlabPort(GitProviderProtocol):
 
         return json_diff_to_unified(file_diffs)
 
-    async def _get_username(self) -> str:
-        """The bot's own username, fetched once: it is what marks ReVu's notes.
-
-        The credential identifies the bot, so the answer cannot change while this
-        port lives.
-        """
-        if self._username is None:
-            payload = await self.http_client.get(url=self._api_url("user"), headers=self._get_headers())
-            username = payload.get("username") if isinstance(payload, dict) else None
-            self._username = username if isinstance(username, str) else ""
-
-        return self._username
-
     @staticmethod
-    def _note(raw: dict, username: str) -> PreviousCommentDTO | None:
+    def _note(raw: dict) -> PreviousCommentDTO | None:
         if raw.get("system"):
             # "changed the description", "added 3 commits" and friends.
             return None
 
-        body = body_of(raw)
-        if not body:
+        raw_body = body_of(raw)
+        if not raw_body:
             return None
 
         author = raw.get("author")
@@ -120,8 +107,10 @@ class GitlabPort(GitProviderProtocol):
 
         return PreviousCommentDTO(
             author=author_name if isinstance(author_name, str) else "",
-            body=body,
-            is_revu=bool(username) and author_name == username,
+            # The signature, not the author: ReVu often runs on the author's own
+            # account, and then authorship says nothing.
+            body=clean(raw_body),
+            is_revu=is_marked(raw_body),
             path=path if isinstance(path, str) else None,
             line=line if isinstance(line, int) else None,
             resolved=bool(raw.get("resolved")),
@@ -133,7 +122,6 @@ class GitlabPort(GitProviderProtocol):
         GitLab keeps the whole conversation — including system notes — in one
         list, and reports whether a note was resolved.
         """
-        username = await self._get_username()
         project = self._project(repo)
 
         raws = await fetch_list_pages(
@@ -145,7 +133,7 @@ class GitlabPort(GitProviderProtocol):
             self._get_headers(),
         )
 
-        return build_context((sort_key(raw), self._note(raw, username)) for raw in raws)
+        return build_context((sort_key(raw), self._note(raw)) for raw in raws)
 
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
         await self.http_client.post(

@@ -8,6 +8,7 @@ implementation is what stops the two hosts from drifting apart.
 from functools import partial
 
 from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.review_marker import clean, is_marked
 from revu.domain.entities.dto.review_context_dto import (
     PreviousCommentDTO,
     ReviewContextDTO,
@@ -30,7 +31,6 @@ class GithubCompatibleComments:
 
     http_client: HttpClientGateway
     config: GitConnectionConfig
-    _login: str | None = None
 
     # Abstract hooks: every concrete port supplies both, so these bodies are
     # unreachable by design.
@@ -43,26 +43,10 @@ class GithubCompatibleComments:
     def _comment_page_url(self, path: str, page: int) -> str:
         return self._url(f"{path}?per_page={CONTEXT_PAGE_SIZE}&page={page}")
 
-    async def _get_login(self) -> str:
-        """The bot's own login, fetched once: it is what marks ReVu's comments.
-
-        The credential identifies the bot, so the answer cannot change while this
-        port lives, and a review should not pay for the lookup every time.
-        """
-        if self._login is None:
-            payload = await self.http_client.get(
-                url=self._url(f"{self.API_PREFIX}user"),
-                headers=self._get_headers(),
-            )
-            login = payload.get("login") if isinstance(payload, dict) else None
-            self._login = login if isinstance(login, str) else ""
-
-        return self._login
-
     @staticmethod
-    def _comment(raw: dict, login: str, *, inline: bool) -> PreviousCommentDTO | None:
-        body = body_of(raw)
-        if not body:
+    def _comment(raw: dict, *, inline: bool) -> PreviousCommentDTO | None:
+        raw_body = body_of(raw)
+        if not raw_body:
             # An approval, a label change or an empty review carries no text.
             return None
 
@@ -75,8 +59,10 @@ class GithubCompatibleComments:
 
         return PreviousCommentDTO(
             author=author_login if isinstance(author_login, str) else "",
-            body=body,
-            is_revu=bool(login) and author_login == login,
+            # The signature, not the author: ReVu often runs on the author's own
+            # account, and then authorship says nothing.
+            body=clean(raw_body),
+            is_revu=is_marked(raw_body),
             path=raw.get("path") if inline and isinstance(raw.get("path"), str) else None,
             line=line if isinstance(line, int) else None,
             # Neither host exposes review-thread resolution over REST.
@@ -90,7 +76,6 @@ class GithubCompatibleComments:
         the inline review comments and the review bodies (where an inline summary
         goes). All three are read, or a re-review would miss its own summary.
         """
-        login = await self._get_login()
         headers = self._get_headers()
 
         mapped: list[tuple[str, PreviousCommentDTO | None]] = []
@@ -105,6 +90,6 @@ class GithubCompatibleComments:
                 partial(self._comment_page_url, path),
                 headers,
             )
-            mapped.extend((sort_key(raw), self._comment(raw, login, inline=inline)) for raw in raws)
+            mapped.extend((sort_key(raw), self._comment(raw, inline=inline)) for raw in raws)
 
         return build_context(mapped)

@@ -1,6 +1,7 @@
 from urllib.parse import urljoin
 
 from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.review_marker import clean, is_marked
 from revu.domain.entities.dto.ai_provider_dto import (
     BitbucketReviewCommentDTO,
     ReviewResponseDTO,
@@ -83,22 +84,6 @@ class BitbucketPort(GitProviderProtocol):
 
         return flattened
 
-    def _is_revu(self, raw: dict) -> bool:
-        """Whether ReVu is the author of this comment.
-
-        Bitbucket Data Center has no endpoint that answers "who am I", so the
-        token's owner is recognised either by the configured reviewer name or, as a
-        fallback, by the edit permission the host reports on the caller's own
-        comments. The name is preferred because a repository administrator can
-        receive that permission on somebody else's comment.
-        """
-        if self.config.reviewer:
-            return self._author_of(raw).casefold() == self.config.reviewer.casefold()
-
-        permissions = raw.get("permittedOperations")
-
-        return bool(isinstance(permissions, dict) and permissions.get("canEdit"))
-
     @staticmethod
     def _author_of(raw: dict) -> str:
         author = raw.get("author")
@@ -113,7 +98,7 @@ class BitbucketPort(GitProviderProtocol):
         return ""
 
     @classmethod
-    def _comment(cls, raw: dict, is_revu: bool) -> PreviousCommentDTO | None:
+    def _comment(cls, raw: dict) -> PreviousCommentDTO | None:
         text = raw.get("text")
         if not isinstance(text, str) or not text.strip():
             return None
@@ -126,8 +111,10 @@ class BitbucketPort(GitProviderProtocol):
 
         return PreviousCommentDTO(
             author=cls._author_of(raw),
-            body=text,
-            is_revu=is_revu,
+            # The signature, not the author: ReVu often runs on the author's own
+            # account, and then authorship says nothing.
+            body=clean(text),
+            is_revu=is_marked(text),
             path=path_text if isinstance(path_text, str) else None,
             line=line if isinstance(line, int) else None,
             # A Bitbucket comment is a task only when it is a blocker; both flags
@@ -156,7 +143,7 @@ class BitbucketPort(GitProviderProtocol):
                     continue
 
                 for comment in self._flatten(raw):
-                    mapped.append((sort_key(comment), self._comment(comment, self._is_revu(comment))))
+                    mapped.append((sort_key(comment), self._comment(comment)))
 
             next_page_start = page.get("nextPageStart")
 

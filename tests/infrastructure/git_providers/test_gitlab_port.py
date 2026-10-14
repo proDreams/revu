@@ -5,6 +5,7 @@ import pytest
 from revu.application.entities.exceptions.provider_exceptions import (
     GitProviderException,
 )
+from revu.application.entities.review_marker import mark
 from revu.domain.entities.dto.ai_provider_dto import (
     GitHubReviewCommentDTO,
     GitLabReviewCommentDTO,
@@ -247,14 +248,18 @@ async def test_a_comment_of_another_host_is_rejected():
     http_client.post.assert_not_awaited()
 
 
-BOT = {"username": "revu-bot"}
-SYSTEM_NOTE = {"body": "changed the description", "system": True, "author": BOT, "created_at": "2026-01-01T00:00:00Z"}
 OUR_NOTE = {
-    "body": "импорты лучше построчно",
-    "author": BOT,
+    "body": mark("импорты лучше построчно"),
+    "author": {"username": "ivan"},
     "resolved": True,
     "created_at": "2026-01-02T00:00:00Z",
     "position": {"new_path": "app.py", "new_line": 12},
+}
+SYSTEM_NOTE = {
+    "body": "changed the description",
+    "system": True,
+    "author": {"username": "ivan"},
+    "created_at": "2026-01-01T00:00:00Z",
 }
 THEIR_NOTE = {
     "body": "не трогаем этот модуль",
@@ -262,12 +267,12 @@ THEIR_NOTE = {
     "created_at": "2026-01-03T00:00:00Z",
     "position": {"old_path": "legacy.py", "old_line": 4},
 }
+EMPTY_NOTE = {"body": "   ", "author": {"username": "ivan"}, "created_at": "2026-01-04T00:00:00Z"}
 
 
-def _context_client() -> AsyncMock:
+def _context_client(notes: list[dict] | None = None) -> AsyncMock:
     http_client = AsyncMock()
-    empty = {"body": "   ", "author": BOT, "created_at": "2026-01-04T00:00:00Z"}
-    http_client.get.side_effect = [BOT, [SYSTEM_NOTE, empty, OUR_NOTE, THEIR_NOTE]]
+    http_client.get.return_value = notes if notes is not None else [SYSTEM_NOTE, EMPTY_NOTE, OUR_NOTE, THEIR_NOTE]
 
     return http_client
 
@@ -282,8 +287,7 @@ async def test_fetch_review_context_reads_notes_and_skips_system_ones():
         "импорты лучше построчно",
         "не трогаем этот модуль",
     ]
-    assert [call.kwargs["url"] for call in http_client.get.await_args_list][0] == (f"{GITLAB_URL}/api/v4/user")
-    assert "sort=asc" in http_client.get.await_args_list[1].kwargs["url"]
+    assert "sort=asc" in http_client.get.await_args.kwargs["url"]
 
 
 async def test_fetch_review_context_marks_revu_notes_and_their_resolution():
@@ -293,6 +297,17 @@ async def test_fetch_review_context_marks_revu_notes_and_their_resolution():
     assert context.findings[0].is_revu is True
     assert context.findings[0].resolved is True
     assert context.discussion[0].is_revu is False
+
+
+async def test_a_same_account_note_without_the_signature_is_discussion():
+    """The GitLab token often belongs to the same person who writes in the MR."""
+    mine = {**THEIR_NOTE, "author": {"username": "ivan"}, "body": "WIP"}
+
+    context = await _port(_context_client([mine])).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    assert context.findings == ()
+    assert context.discussion[0].body == "WIP"
 
 
 async def test_fetch_review_context_keeps_the_diff_position():
@@ -305,7 +320,4 @@ async def test_fetch_review_context_keeps_the_diff_position():
 
 
 async def test_fetch_review_context_is_none_without_notes():
-    http_client = AsyncMock()
-    http_client.get.side_effect = [BOT, []]
-
-    assert await _port(http_client).fetch_review_context(repo="group/project", index=11) is None
+    assert await _port(_context_client([])).fetch_review_context(repo="group/project", index=11) is None

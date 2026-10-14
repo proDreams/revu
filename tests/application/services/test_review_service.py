@@ -7,6 +7,7 @@ from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
 )
+from revu.application.entities.review_marker import MARKER, is_marked
 from revu.application.entities.tenant import GitConnection, TenantContext
 from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.ai_provider_dto import (
@@ -81,7 +82,10 @@ async def test_comment_mode_sends_one_comment(service, ai_port, git_port):
 
     await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
-    git_port.send_comment.assert_awaited_once_with(repo_owner="owner/repo", review="comment review", index=7)
+    published = git_port.send_comment.await_args.kwargs["review"]
+    assert published.startswith("🤖 **ReVu**")
+    assert published.endswith(MARKER)
+    assert "comment review" in published
     git_port.send_inline.assert_not_awaited()
 
     task = ai_port.get_comment_response.await_args.args[0]
@@ -269,8 +273,8 @@ async def test_unanchored_comments_are_dropped_before_sending(service, ai_port, 
         await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
     sent = git_port.send_inline.await_args.kwargs["review"]
-    assert [comment.body for comment in sent.comments] == ["kept"]
-    assert sent.general_comment == "inline review"
+    assert [comment.body for comment in sent.comments] == [f"🤖 ReVu: kept\n\n{MARKER}"]
+    assert "inline review" in sent.general_comment
     assert "dropped 1 of 2 inline comments for connection gh-main" in caplog.text
 
 
@@ -347,10 +351,11 @@ async def test_the_summary_reports_how_many_findings_were_fixed(service, ai_port
 
     await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
-    published = git_port.send_inline.await_args.kwargs["review"]
-    assert published.general_comment.startswith("📊 Из прошлых замечаний исправлено: 1 из 2.")
-    assert "Осталось: 1." in published.general_comment
-    assert published.general_comment.endswith("итог")
+    published = git_port.send_inline.await_args.kwargs["review"].general_comment
+    lines = published.splitlines()
+    assert lines[0] == "🤖 **ReVu** · повторное ревью"
+    assert lines[1] == "📊 Из прошлых замечаний исправлено: 1 из 2. Осталось: 1."
+    assert "итог" in published
 
 
 async def test_the_summary_says_when_everything_is_closed(service, ai_port, git_port):
@@ -387,7 +392,8 @@ async def test_no_summary_without_earlier_findings(service, ai_port, git_port):
 
     await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
-    assert git_port.send_inline.await_args.kwargs["review"].general_comment == "inline review"
+    published = git_port.send_inline.await_args.kwargs["review"].general_comment
+    assert published == f"🤖 **ReVu**\ninline review\n\n{MARKER}"
 
 
 async def test_no_summary_when_the_model_reported_nothing(service, ai_port, git_port, caplog):
@@ -398,7 +404,7 @@ async def test_no_summary_when_the_model_reported_nothing(service, ai_port, git_
     with caplog.at_level("WARNING"):
         await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
-    assert git_port.send_inline.await_args.kwargs["review"].general_comment == "inline review"
+    assert "📊" not in git_port.send_inline.await_args.kwargs["review"].general_comment
     assert "omitting the progress line" in caplog.text
 
 
@@ -409,4 +415,67 @@ async def test_comment_mode_publishes_the_model_text_as_is(service, ai_port, git
 
     await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
-    assert git_port.send_comment.await_args.kwargs["review"] == "comment review"
+    published = git_port.send_comment.await_args.kwargs["review"]
+    assert published.startswith("🤖 **ReVu** · повторное ревью\n\n")
+    assert published.endswith(f"comment review\n\n{MARKER}")
+
+
+async def test_a_first_review_is_signed_and_headlined(service, ai_port, git_port):
+    """The signature is what makes a later review recognise its own words."""
+    git_port.fetch_review_context.return_value = None
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    published = git_port.send_inline.await_args.kwargs["review"]
+    assert published.general_comment.startswith("🤖 **ReVu**\n")
+    assert "повторное ревью" not in published.general_comment
+    assert is_marked(published.general_comment) is True
+
+
+async def test_every_inline_comment_is_badged_and_signed(service, ai_port, git_port):
+    """Under one account the avatar says nothing, so the text has to."""
+    from revu.domain.entities.dto.ai_provider_dto import GitHubReviewCommentDTO
+
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[GitHubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="первое")],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    published = git_port.send_inline.await_args.kwargs["review"]
+    assert published.comments[0].body.startswith("🤖 ReVu: первое")
+    assert is_marked(published.comments[0].body) is True
+
+
+async def test_a_signed_review_is_recognised_on_the_next_run(service, ai_port, git_port):
+    """Round trip: what ReVu publishes is what a later review reads back as its own."""
+    from revu.domain.entities.dto.ai_provider_dto import GitHubReviewCommentDTO
+
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[GitHubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="первое")],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+    published = git_port.send_inline.await_args.kwargs["review"]
+
+    # A host reports back what was posted.
+    git_port.fetch_review_context.return_value = ReviewContextDTO(
+        comments=(
+            PreviousCommentDTO(
+                author="ivan",
+                body=published.comments[0].body,
+                is_revu=is_marked(published.comments[0].body),
+            ),
+        )
+    )
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    context = ai_port.get_inline_response.await_args.args[0].previous_review
+    assert context is not None
+    assert context.findings[0].body.startswith("🤖 ReVu: первое")
+    assert "повторное ревью" in git_port.send_inline.await_args.kwargs["review"].general_comment

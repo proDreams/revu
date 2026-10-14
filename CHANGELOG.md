@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ReVu's own count of earlier findings, so a model that reports fewer of them
   cannot shrink it, and a model that reports none gets no line at all rather than
   a claim of zero fixes.
+- **ReVu signs the comments it publishes.** Authorship could never answer "is this
+  an earlier review of mine?": ReVu normally runs on the repository owner's token,
+  so the bot and the person are the same account, and every comment they wrote
+  looked like a previous finding. That made a first review take the follow-up
+  prompt and report nonsense progress. Each published comment now ends with an
+  invisible marker (a trailing HTML comment, which the hosts' CommonMark rendering
+  hides and their APIs return verbatim), and only that marker decides what ReVu
+  considers its own.
+- A visible header on the summary — `🤖 ReVu`, or `🤖 ReVu · повторное ревью` —
+  and a `🤖 ReVu:` prefix on every inline comment, so a reader can tell who wrote
+  what even when both run under one account.
 - `INCLUDE_PR_DISCUSSION` (default `true`, overridable per connection) decides
   whether other people's comments are sent to the AI provider as context. ReVu's
   own findings are always included, because they are the model's own earlier
@@ -37,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The output schema of both review modes now carries `previous_findings`, empty
   on a first review. A provider answer that omits it is treated as "nothing
   reported" instead of as "nothing was fixed".
+- ReVu no longer asks the host who the token belongs to (`/user` on GitHub, Gitea
+  and GitLab, the reviewer name or `permittedOperations.canEdit` on Bitbucket):
+  the signature answers that question, so a review makes fewer requests and cannot
+  be misled by a shared account.
+- Comments published before this version carry no signature and are therefore not
+  recognised as ReVu's. A repeated review of an old pull request starts from the
+  diff, exactly as it did before this release.
 - A pull request without a description no longer reaches the model as the literal
   `None`.
 
