@@ -4,8 +4,18 @@ from revu.presentation.webhooks.schemas.github_schemas import (
     BitBucketPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
-    GitVersePullRequestWebhook,
 )
+from revu.presentation.webhooks.schemas.gitlab_schemas import (
+    GitLabMergeRequestWebhook,
+)
+
+# GitLab names its merge request actions differently. Anything that reaches the
+# mapper has already passed the review-trigger gate.
+GITLAB_ACTION_TO_DOMAIN = {
+    "open": PullRequestActionEnum.OPENED,
+    "reopen": PullRequestActionEnum.REOPENED,
+    "update": PullRequestActionEnum.SYNCHRONIZE,
+}
 
 
 def github_to_domain(event: GithubPullRequestWebhook) -> PullRequestEventDTO:
@@ -23,9 +33,18 @@ def gitea_to_domain(event: GiteaPullRequestWebhook) -> PullRequestEventDTO:
     return github_to_domain(event)
 
 
-def gitverse_to_domain(event: GitVersePullRequestWebhook) -> PullRequestEventDTO:
-    return github_to_domain(event)
-
-
 def bitbucket_to_domain(event: BitBucketPullRequestWebhook) -> PullRequestEventDTO:
     return github_to_domain(event)
+
+
+def gitlab_to_domain(event: GitLabMergeRequestWebhook) -> PullRequestEventDTO:
+    attributes = event.object_attributes
+
+    return PullRequestEventDTO(
+        action=GITLAB_ACTION_TO_DOMAIN.get(attributes.action, PullRequestActionEnum.SYNCHRONIZE),
+        repo_full_name=event.project.path_with_namespace,
+        pr_number=attributes.iid,
+        pr_title=attributes.title,
+        pr_body=attributes.description,
+        commit_sha=attributes.last_commit_sha,
+    )

@@ -5,19 +5,28 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
+from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
 from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapter import (
     OpenAICompatibleAdapter,
 )
-from revu.infrastructure.http_client.http_client_gateway import get_http_gateway
+from tests.conftest import make_ai_profile
 
 
-async def test_openai_adapter_returns_sdk_response():
+def _profile():
+    return make_ai_profile(
+        name="cheap",
+        vendor=AIProviderEnum.OPENAI_COMPATIBLE,
+        base_url="https://cheap.example.com/v1",
+        model="qwen",
+    )
+
+
+async def test_openai_compatible_adapter_returns_sdk_response(http_gateway):
     fake_response = AsyncMock()
 
-    adapter = OpenAICompatibleAdapter(http_client=get_http_gateway())
+    adapter = OpenAICompatibleAdapter(http_client=http_gateway, profile=_profile())
     adapter._openai_client = AsyncMock()
     adapter._openai_client.chat.completions.parse.return_value = fake_response
-    adapter.model = "gpt-4o"
 
     messages = [
         ChatCompletionSystemMessageParam(role="system", content="system_prompt"),
@@ -27,6 +36,7 @@ async def test_openai_adapter_returns_sdk_response():
     resp = await adapter.get_chat_response(messages=messages)
 
     assert resp is fake_response
+    assert adapter.model == "qwen"
     adapter._openai_client.chat.completions.parse.assert_awaited_once_with(
-        model=adapter.model, messages=messages, response_format=ANY
+        model="qwen", messages=messages, response_format=ANY
     )

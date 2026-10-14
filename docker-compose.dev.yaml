@@ -3,7 +3,12 @@ services:
     build: .
     container_name: revu
     restart: always
-    command: make run_prod
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     ports:
       - "8000:8000"
     volumes:

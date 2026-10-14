@@ -2,93 +2,82 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from revu.application.entities.exceptions.ai_adapters_exceptions import (
-    InvalidAIOutput,
-    UnknownGitProvider,
-)
+from revu.application.entities.exceptions.ai_adapters_exceptions import InvalidAIOutput
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_port import YandexGPTPort
+from tests.conftest import make_task
 from tests.fixtures.infrastructure_responses.ai_responses import (
+    AI_RESPONSE_JSON_ARRAY,
+    INCOMPLETE_AI_RESPONSE_JSON,
+    MISSING_GENERAL_COMMENT_AI_RESPONSE_JSON,
+    VALID_BITBUCKET_AI_RESPONSE_JSON,
     VALID_GITEA_AI_RESPONSE_JSON,
     VALID_GITEA_MARKDOWN_AI_RESPONSE_JSON,
     VALID_GITHUB_AI_RESPONSE_JSON,
+    VALID_GITHUB_AI_RESPONSE_JSON_LOWERCASE_SIDE,
 )
+
+pytestmark = pytest.mark.unit
+
+
+def _port(output: str) -> YandexGPTPort:
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = output
+    return YandexGPTPort(adapter=adapter)
 
 
 def test_get_messages():
-    port = YandexGPTPort(adapter=AsyncMock())
-
-    system_prompt = "system prompt"
-    user_prompt = "user prompt"
-
-    messages = port._get_messages(system_prompt=system_prompt, user_prompt=user_prompt)
+    messages = YandexGPTPort(adapter=AsyncMock())._get_messages(
+        system_prompt="system prompt", user_prompt="user prompt"
+    )
 
     assert isinstance(messages, list)
-    assert messages[0]["text"] == "system prompt"
+    assert messages[0].text == "system prompt"
 
 
 async def test_comment_response():
     adapter = AsyncMock()
     adapter.get_chat_response.return_value = "test output"
 
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-
-    result = await port.get_comment_response(diff=diff, pr_title=pr_title, pr_body=pr_body)
-
-    assert result == "test output"
+    assert await YandexGPTPort(adapter=adapter).get_comment_response(make_task()) == "test output"
 
 
 async def test_github_inline_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = VALID_GITHUB_AI_RESPONSE_JSON
-
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "github"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+    result = await _port(VALID_GITHUB_AI_RESPONSE_JSON).get_inline_response(make_task())
 
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == "test comment"
     assert result.comments[1].body == "test body 2"
+    assert result.comments[1].side == "LEFT"
 
 
-async def test_github_with_system_prompt_inline_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = VALID_GITHUB_AI_RESPONSE_JSON
+async def test_lowercase_side_is_normalised():
+    result = await _port(VALID_GITHUB_AI_RESPONSE_JSON_LOWERCASE_SIDE).get_inline_response(make_task())
 
-    port = YandexGPTPort(adapter=adapter)
-    port.system_prompt = "test system-prompt"
+    assert result.comments[0].side == "LEFT"
 
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "github"
 
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+async def test_bitbucket_inline_response():
+    result = await _port(VALID_BITBUCKET_AI_RESPONSE_JSON).get_inline_response(
+        make_task(git_host=GitProviderEnum.BITBUCKET)
+    )
 
-    assert isinstance(result, ReviewResponseDTO)
+    assert result.comments[0].lineType == "ADDED"
+    assert result.comments[1].line == 5
+
+
+async def test_the_task_system_prompt_is_used():
+    port = _port(VALID_GITHUB_AI_RESPONSE_JSON)
+
+    await port.get_inline_response(make_task(system_prompt="test system-prompt"))
+
+    messages = port.adapter.get_chat_response.await_args.kwargs["messages"]
+    assert messages[0].text.startswith("test system-prompt\n\n")
 
 
 async def test_gitea_inline_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = VALID_GITEA_AI_RESPONSE_JSON
-
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "gitea"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+    result = await _port(VALID_GITEA_AI_RESPONSE_JSON).get_inline_response(make_task(git_host=GitProviderEnum.GITEA))
 
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == "test comment"
@@ -96,17 +85,9 @@ async def test_gitea_inline_response():
 
 
 async def test_gitea_markdown_inline_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = VALID_GITEA_MARKDOWN_AI_RESPONSE_JSON
-
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "gitea"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+    result = await _port(VALID_GITEA_MARKDOWN_AI_RESPONSE_JSON).get_inline_response(
+        make_task(git_host=GitProviderEnum.GITEA)
+    )
 
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == "test comment"
@@ -114,32 +95,17 @@ async def test_gitea_markdown_inline_response():
 
 
 async def test_invalid_inline_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = "invalid response"
-
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "gitea"
-
     with pytest.raises(InvalidAIOutput) as exc_info:
-        await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+        await _port("invalid response").get_inline_response(make_task(git_host=GitProviderEnum.GITEA))
 
     assert "invalid JSON response from yandexgpt" in str(exc_info.value)
 
 
-async def test_unknown_inline_response():
-    adapter = AsyncMock()
-    port = YandexGPTPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "unknown"
-
-    with pytest.raises(UnknownGitProvider) as exc_info:
-        await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
-
-    assert "unknown git provider" in str(exc_info.value)
+@pytest.mark.parametrize(
+    "payload",
+    [INCOMPLETE_AI_RESPONSE_JSON, MISSING_GENERAL_COMMENT_AI_RESPONSE_JSON, AI_RESPONSE_JSON_ARRAY],
+)
+async def test_response_that_does_not_match_the_schema(payload):
+    """Valid JSON with the wrong shape must fail as InvalidAIOutput, not KeyError."""
+    with pytest.raises(InvalidAIOutput):
+        await _port(payload).get_inline_response(make_task())

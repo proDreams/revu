@@ -1,21 +1,13 @@
-import json
-
 from gigachat.models import Chat, Messages, MessagesRole
 
-from revu.application.entities.exceptions.ai_adapters_exceptions import (
-    InvalidAIOutput,
-)
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.dto.review_task_dto import ReviewTask
 from revu.infrastructure.ai_providers.base import BaseAIPort
-from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
-    GigaChatAdapter,
-    get_gigachat_adapter,
-)
+from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import GigaChatAdapter
 
 
 class GigaChatPort(BaseAIPort):
     def __init__(self, adapter: GigaChatAdapter) -> None:
-        super().__init__()
         self.adapter = adapter
 
     @staticmethod
@@ -27,41 +19,33 @@ class GigaChatPort(BaseAIPort):
             ]
         )
 
-    async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
-        system_prompt = self.system_prompt or self._get_comment_prompt()
+    async def get_comment_response(self, task: ReviewTask) -> str:
         chat = self._get_chat(
-            system_prompt=system_prompt,
-            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            system_prompt=self._comment_instructions(task),
+            user_prompt=self._get_diff_prompt(task),
         )
 
         return await self.adapter.get_chat_response(payload=chat)
 
-    async def get_inline_response(
-        self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
-    ) -> ReviewResponseDTO:
-        system_prompt = self._get_prompt(git_provider)
-
-        if self.system_prompt:
-            system_prompt = self.system_prompt
+    async def get_inline_response(self, task: ReviewTask) -> ReviewResponseDTO:
+        response_model = self._get_response_model(task.git_host)
 
         chat = self._get_chat(
-            system_prompt=system_prompt,
-            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            system_prompt=self._inline_instructions(task),
+            user_prompt=self._get_diff_prompt(task),
         )
 
         output = await self.adapter.get_chat_response(payload=chat)
 
-        try:
-            serialized_output = json.loads(output)
-        except json.decoder.JSONDecodeError:
-            raise InvalidAIOutput("invalid JSON response from gigachat")
+        payload = self._parse_inline_payload(output, provider="gigachat", response_model=response_model)
 
         return ReviewResponseDTO.from_request(
-            general_comment=serialized_output["general_comment"],
-            comments=serialized_output["comments"],
-            git_provider=git_provider,
+            general_comment=payload["general_comment"],
+            comments=payload["comments"],
+            git_host=task.git_host,
+            previous_findings=payload["previous_findings"],
         )
 
-
-def get_gigachat_port() -> GigaChatPort:
-    return GigaChatPort(adapter=get_gigachat_adapter())
+    async def aclose(self) -> None:
+        """This port owns its SDK transport, so the registry must close it."""
+        await self.adapter.aclose()

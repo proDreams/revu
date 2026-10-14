@@ -6,22 +6,23 @@ from openai.types.chat import (
 )
 from pydantic import BaseModel
 
-from revu.application.config import get_settings
-from revu.infrastructure.http_client.http_client_gateway import (
-    HttpClientGateway,
-    get_http_gateway,
-)
+from revu.application.entities.config import AIProfileConfig
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class OpenAICompatibleAdapter:
-    def __init__(self, http_client: HttpClientGateway):
+    def __init__(self, http_client: HttpClientGateway, profile: AIProfileConfig):
         self._http_client = http_client
+        self.profile = profile
         self._openai_client = AsyncClient(
-            api_key=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,  # type: ignore
-            http_client=self._http_client.get_client(),
-            base_url=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_BASE_URL,  # type: ignore
+            api_key=profile.api_key,
+            # The SDK is typed against its own httpx build, which is not the
+            # one we depend on; the boundary tests drive the real client through
+            # our transport, so the mismatch is in the stubs, not at runtime.
+            http_client=self._http_client.get_client(),  # type: ignore[arg-type]
+            base_url=profile.base_url,
         )
-        self.model = get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL  # type: ignore
+        self.model = profile.model
 
     async def get_chat_response(
         self,
@@ -37,7 +38,3 @@ class OpenAICompatibleAdapter:
         )
 
         return response
-
-
-def get_openai_compatible_adapter() -> OpenAICompatibleAdapter:
-    return OpenAICompatibleAdapter(http_client=get_http_gateway())

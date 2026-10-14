@@ -1,4 +1,4 @@
-from revu.application.base.exception import CoreException
+from revu.domain.entities.exceptions.base import CoreException
 
 
 class UnknownGitProvider(CoreException):

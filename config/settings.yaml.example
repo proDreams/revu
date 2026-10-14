@@ -1,39 +1,83 @@
+# ReVu 2.1 configuration.
+#
+# One instance serves many git providers. Each entry under GIT_PROVIDERS gets its
+# own webhook URL: https://<your-revu-host>/webhooks/<key>
+#
+# Every git connection uses DEFAULT_AI_PROVIDER unless it names its own profile.
+# Full reference with the optional overrides: settings.yaml.example_full
+
 # REVIEW_MODE — how AI review comments will be posted:
 # "comment" = one general comment on the PR
 # "inline" = line-by-line inline comments
+# Can be overridden per git connection.
 REVIEW_MODE: "inline"
 
-GIT_PROVIDER_CONFIG:
-  # GIT_PROVIDER — which git hosting service you use:
-  # "github"
-  # "gitea"
-  GIT_PROVIDER: "gitea"
-  # GIT_PROVIDER_USER_TOKEN — personal access token of the bot/user to access API
-  GIT_PROVIDER_USER_TOKEN: "asdasdasd"
-  # GIT_PROVIDER_URL — base URL of your git server
-  GIT_PROVIDER_URL: "https://example.com"
-  # GIT_PROVIDER_SECRET_TOKEN — secret token to validate incoming webhooks
-  GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
-  # GIT_PROVIDER_REVIEWER — username of the bot/user, which should be in reviewers for AI review to run (Only BitBucket)
-  GIT_PROVIDER_REVIEWER: "slug"
+# DEFAULT_AI_PROVIDER — profile from AI_PROVIDERS used by every connection that
+# does not override it.
+DEFAULT_AI_PROVIDER: "default"
 
-AI_PROVIDER_CONFIG:
-  # AI_PROVIDER — which AI API you use:
-  # "openai" (official Responses API)
-  # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
-  # "gigachat"
-  AI_PROVIDER: "openai"
-  # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
-  AI_PROVIDER_API_KEY: "aasdasdasd"
-  # AI_PROVIDER_MODEL — which model to use for code review (gpt-4.1-mini, gpt-4o, gpt-3.5-turbo, etc...)
-  AI_PROVIDER_MODEL: "gpt-4.1-mini"
-  # AI_PROVIDER_BASE_URL — base URL for OpenAI-compatible providers
-  # (useful when you run your own LLM API or use third-party endpoints like OpenRouter, LocalAI, LM Studio, etc.)
-  AI_PROVIDER_BASE_URL: "https://example.com/v1"
-  # AI_PROVIDER_SCOPE — required only for GigaChat API (scope parameter used for authorization)
-  AI_PROVIDER_SCOPE: "GIGACHAT_API_PERS"
-  # AI_PROVIDER_FOLDER_ID - required only for YandexGPT. Project folder identification
-  AI_PROVIDER_FOLDER_ID: "abcdef"
+# AI_PROVIDERS — named AI settings. Several git connections may share one profile.
+AI_PROVIDERS:
+  default:
+    # AI_PROVIDER — which AI API you use:
+    # "openai" (official Responses API)
+    # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
+    # "gigachat"
+    # "yandexgpt"
+    AI_PROVIDER: "openai"
+    # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
+    AI_PROVIDER_API_KEY: "sk-..."
+    # AI_PROVIDER_MODEL — which model to use for code review (gpt-4.1-mini, gpt-4o, etc...)
+    AI_PROVIDER_MODEL: "gpt-4.1-mini"
+
+# GIT_PROVIDERS — one entry per git host you want reviewed. The key becomes part
+# of the webhook URL, so it must match ^[a-z0-9][a-z0-9_-]{2,31}$.
+GIT_PROVIDERS:
+  # Webhook URL: https://<your-revu-host>/webhooks/main
+  main:
+    # GIT_PROVIDER — which git hosting service you use:
+    # "github"
+    # "gitea"
+    # "gitlab"
+    # "bitbucket"
+    GIT_PROVIDER: "gitea"
+    # GIT_PROVIDER_URL — base URL of your git server.
+    # Required for gitea and bitbucket. Optional for github and gitlab: omit it
+    # to use github.com or https://gitlab.com. For a self-managed instance set
+    # the instance root; ReVu appends /api/v4 itself. For GitHub Enterprise
+    # Server set the REST root including the /api/v3 suffix
+    # (e.g. "https://ghe.example.com/api/v3").
+    GIT_PROVIDER_URL: "https://gitea.example.com"
+    # GIT_PROVIDER_USER_TOKEN — personal access token of the bot/user to access API
+    GIT_PROVIDER_USER_TOKEN: "asdasdasd"
+    # GIT_PROVIDER_SECRET_TOKEN — secret token to validate incoming webhooks.
+    # Must match the secret configured on the provider side. Checked against
+    # X-Hub-Signature-256 / X-Gitea-Signature / X-Hub-Signature (sha256=<hex>).
+    # For Bitbucket the signature is mandatory: Data Center 8.9+ and a filled-in
+    # "Secret" field on the webhook, otherwise requests are rejected with 403.
+    # For GitLab this is either the webhook "Signing token" (GitLab 19.0+,
+    # recommended: the payload is signed and the body is authenticated) or the
+    # legacy "Secret token" sent in X-Gitlab-Token (plain text, not bound to the
+    # body). An empty value is rejected at startup.
+    GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
+    # (optional) AI_PROVIDER — use another AI profile for this connection only,
+    # for example "cheap". Must exist in AI_PROVIDERS.
+    # AI_PROVIDER: "cheap"
+    # (optional, Bitbucket only) GIT_PROVIDER_REVIEWER — review only starts when
+    # this user is among the pull request reviewers.
+    # GIT_PROVIDER_REVIEWER: "slug"
+    # (optional) SYSTEM_PROMPT — extra instructions for this connection only.
+    # SYSTEM_PROMPT: "Always mention the project coding standards."
+    # (optional) REVIEW_MODE, MAX_CONCURRENT_REVIEWS, NOTIFY_ON_FAILURE,
+    # INCLUDE_PR_DISCUSSION, CONTEXT_DEPTH and the context budgets — per-connection
+    # values that fall back to the global ones.
+    # REVIEW_MODE: "comment"
+    # MAX_CONCURRENT_REVIEWS: 1
+    # NOTIFY_ON_FAILURE: false
+    # INCLUDE_PR_DISCUSSION: false
+    # CONTEXT_DEPTH: "deep"
+    # CONTEXT_MAX_FILES: 12
+    # CONTEXT_MAX_CHARS: 40000
 
 # logger
 # LOG_LEVEL — log detail level (DEBUG, INFO, WARNING, ERROR, CRITICAL)

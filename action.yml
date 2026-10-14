@@ -1,0 +1,134 @@
+name: ReVu
+description: AI review of a pull request, run right in the workflow
+author: proDream
+
+branding:
+  icon: check-square
+  color: orange
+
+inputs:
+  image:
+    description: Container image to run
+    required: false
+    default: ghcr.io/prodreams/revu:latest
+  checkout:
+    description: Check out the change first. Turn off only if an earlier step already did, with full history
+    required: false
+    default: "true"
+
+  ai-provider:
+    description: "AI vendor: openai, openai_compatible, gigachat or yandexgpt"
+    required: false
+    default: openai
+  ai-api-key:
+    description: API key of the AI provider
+    required: true
+  ai-model:
+    description: Model to review with
+    required: true
+  ai-base-url:
+    description: Alternative endpoint, for openai_compatible
+    required: false
+  ai-scope:
+    description: Scope, for GigaChat
+    required: false
+  ai-folder-id:
+    description: Folder, for YandexGPT
+    required: false
+
+  github-token:
+    description: Token used to post the review. The default is enough if the job grants pull-requests write
+    required: false
+    default: ${{ github.token }}
+  git-provider:
+    description: "Git host, when it is not github.com: gitea or gitlab"
+    required: false
+  git-provider-url:
+    description: Address of a self-hosted Git host
+    required: false
+
+  review-mode:
+    description: "inline for comments on lines, comment for a single summary"
+    required: false
+  context-depth:
+    description: "flat to review the diff, deep to also read the surrounding code"
+    required: false
+  context-max-files:
+    description: How many additional files deep mode may read
+    required: false
+  context-max-chars:
+    description: Total size budget for the context deep mode adds
+    required: false
+  include-pr-discussion:
+    description: Send other people's pull request comments to the AI provider as well
+    required: false
+  notify-on-failure:
+    description: Post a short comment when the review could not be completed
+    required: false
+  fail-on:
+    description: "When to fail the job: never (default), error (the review failed), findings (there are findings)"
+    required: false
+    default: never
+  format:
+    description: "text (default), github-annotations, json or gitlab-codequality"
+    required: false
+    default: text
+  args:
+    description: Any further arguments for `revu review`
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the change
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v4
+      with:
+        # A shallow clone has no merge base, and `git diff base...head` would then
+        # answer with nothing: the review would look like a pull request that
+        # changes no files. The action fetches the history itself so that nobody
+        # has to remember this.
+        fetch-depth: 0
+
+    - name: ReVu
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        AI_PROVIDER: ${{ inputs.ai-provider }}
+        AI_PROVIDER_API_KEY: ${{ inputs.ai-api-key }}
+        AI_PROVIDER_MODEL: ${{ inputs.ai-model }}
+        AI_PROVIDER_BASE_URL: ${{ inputs.ai-base-url }}
+        AI_PROVIDER_SCOPE: ${{ inputs.ai-scope }}
+        AI_PROVIDER_FOLDER_ID: ${{ inputs.ai-folder-id }}
+        GIT_PROVIDER: ${{ inputs.git-provider }}
+        GIT_PROVIDER_URL: ${{ inputs.git-provider-url }}
+        REVIEW_MODE: ${{ inputs.review-mode }}
+        CONTEXT_DEPTH: ${{ inputs.context-depth }}
+        CONTEXT_MAX_FILES: ${{ inputs.context-max-files }}
+        CONTEXT_MAX_CHARS: ${{ inputs.context-max-chars }}
+        INCLUDE_PR_DISCUSSION: ${{ inputs.include-pr-discussion }}
+        NOTIFY_ON_FAILURE: ${{ inputs.notify-on-failure }}
+        REVU_IMAGE: ${{ inputs.image }}
+        REVU_FAIL_ON: ${{ inputs.fail-on }}
+        REVU_FORMAT: ${{ inputs.format }}
+        REVU_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+
+        # An input that was not given is an empty value, and the command reads an
+        # empty setting as "keep the default" — so every variable can be passed on
+        # unconditionally, and only the ones that were set have an effect.
+        arguments=(--fail-on "$REVU_FAIL_ON")
+        if [ -n "$REVU_FORMAT" ]; then arguments+=(--format "$REVU_FORMAT"); fi
+
+        # shellcheck disable=SC2086  # `args` is a list of words by design
+        docker run --rm \
+          -v "$GITHUB_WORKSPACE:/repo" -w /repo \
+          -e GITHUB_TOKEN \
+          -e AI_PROVIDER -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
+          -e AI_PROVIDER_BASE_URL -e AI_PROVIDER_SCOPE -e AI_PROVIDER_FOLDER_ID \
+          -e GIT_PROVIDER -e GIT_PROVIDER_URL \
+          -e REVIEW_MODE -e CONTEXT_DEPTH -e CONTEXT_MAX_FILES -e CONTEXT_MAX_CHARS \
+          -e INCLUDE_PR_DISCUSSION -e NOTIFY_ON_FAILURE \
+          "$REVU_IMAGE" review "${arguments[@]}" $REVU_ARGS

@@ -4,3 +4,21 @@
 .github
 .env
 .gitea
+.git
+.gitignore
+.pytest_cache
+.mypy_cache
+.ruff_cache
+__pycache__
+*.pyc
+.coverage
+htmlcov
+logs
+revu_logs
+tests
+# Секреты и локальная конфигурация не должны попадать в образ
+config/settings.yaml
+config/settings.yaml.example_full
+docker-compose*
+Dockerfile
+.pre-commit-config.yaml

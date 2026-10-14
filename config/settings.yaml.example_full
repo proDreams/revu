@@ -1,46 +1,152 @@
-# REVIEW_MODE — how AI review comments will be posted:
-# "comment" = one general comment on the PR
-# "inline" = line-by-line inline comments
+# ReVu 2.0 configuration — every supported key.
+#
+# One instance serves many git providers. Each entry under GIT_PROVIDERS gets its
+# own webhook URL: https://<your-revu-host>/webhooks/<key>
+# See settings.yaml.example for the minimal version.
+
+# ── Review defaults (a connection may override each of them) ──────────────────
+# REVIEW_MODE — "comment" = one general comment, "inline" = per-line comments
 REVIEW_MODE: "inline"
+# SYSTEM_PROMPT — extra instructions prepended to the built-in review prompt.
+# It extends rather than replaces it, so the expected output format stays intact.
+# SYSTEM_PROMPT: "Always mention the project coding standards."
+# MAX_CONCURRENT_REVIEWS — how many reviews one connection may run at once.
+# Reviews over the limit wait for a free slot instead of piling up.
+MAX_CONCURRENT_REVIEWS: 3
+# NOTIFY_ON_FAILURE — publish a short comment on the pull request when a review
+# fails, so a silent bot cannot look like a working one. Only the error type goes
+# into the comment; the message and traceback stay in the logs. Set to false if a
+# systemic failure (a revoked token, say) would produce too much noise.
+NOTIFY_ON_FAILURE: true
+# INCLUDE_PR_DISCUSSION — send other people's pull request comments to the AI
+# provider as context for a repeated review. ReVu's own earlier findings are
+# always included, because they are its own output rather than new data. Set to
+# false when the discussion in a repository must not leave your network.
+INCLUDE_PR_DISCUSSION: true
+# CONTEXT_DEPTH — how much code the model gets to see.
+#   "flat" (default) — the diff and the comments, nothing else.
+#   "deep"           — additionally the full bodies of the changed symbols, the
+#                      signatures of what that code calls, and the tests next to it.
+# Deep reads repository files and hands them to the AI provider as they are, so it
+# is off by default. The diff is never trimmed in either mode.
+CONTEXT_DEPTH: "flat"
+# CONTEXT_MAX_FILES — how many ADDITIONAL files deep mode may fetch: dependency
+# modules and test files. Changed files are not counted here, so a pull request
+# touching more files than this still shows every change.
+CONTEXT_MAX_FILES: 12
+# CONTEXT_MAX_CHARS — the total budget for everything deep mode adds, in characters
+# (~4 characters per token). When it runs out the context is cut and the log says
+# so; the diff stays complete. Tune it from the "review context for connection ..."
+# line each review writes.
+CONTEXT_MAX_CHARS: 40000
 
-GIT_PROVIDER_CONFIG:
-  # GIT_PROVIDER — which git hosting service you use:
-  # "github"
-  # "gitea"
-  GIT_PROVIDER: "gitea"
-  # GIT_PROVIDER_USER_TOKEN — personal access token of the bot/user to access API
-  GIT_PROVIDER_USER_TOKEN: "asdasdasd"
-  # GIT_PROVIDER_URL — base URL of your git server
-  GIT_PROVIDER_URL: "https://example.com"
-  # GIT_PROVIDER_SECRET_TOKEN — secret token to validate incoming webhooks
-  GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
-  # GIT_PROVIDER_REVIEWER — username of the bot/user, which should be in reviewers for AI review to run (Only BitBucket)
-  GIT_PROVIDER_REVIEWER: "slug"
+# ── AI profiles ──────────────────────────────────────────────────────────────
+# Named AI settings. Connections without an explicit AI_PROVIDER use
+# DEFAULT_AI_PROVIDER; several connections may share one profile.
+DEFAULT_AI_PROVIDER: "strong"
 
-AI_PROVIDER_CONFIG:
-  # AI_PROVIDER — which AI API you use:
-  # "openai" (official Responses API)
-  # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
-  # "gigachat"
-  AI_PROVIDER: "openai"
-  # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
-  AI_PROVIDER_API_KEY: "aasdasdasd"
-  # AI_PROVIDER_MODEL — which model to use for code review (gpt-4.1-mini, gpt-4o, gpt-3.5-turbo, etc...)
-  AI_PROVIDER_MODEL: "gpt-4.1-mini"
-  # AI_PROVIDER_BASE_URL — base URL for OpenAI-compatible providers
-  # (useful when you run your own LLM API or use third-party endpoints like OpenRouter, LocalAI, LM Studio, etc.)
-  AI_PROVIDER_BASE_URL: "https://example.com/v1"
-  # AI_PROVIDER_SCOPE — required only for GigaChat API (scope parameter used for authorization)
-  AI_PROVIDER_SCOPE: "GIGACHAT_API_PERS"
-  # AI_PROVIDER_FOLDER_ID - required only for YandexGPT. Project folder identification
-  AI_PROVIDER_FOLDER_ID: "abcdef"
+AI_PROVIDERS:
+  # Official OpenAI API (Responses API)
+  strong:
+    AI_PROVIDER: "openai"
+    AI_PROVIDER_API_KEY: "sk-..."
+    AI_PROVIDER_MODEL: "gpt-4.1"
 
+  # Any OpenAI-compatible endpoint: OpenRouter, LocalAI, LM Studio, a local
+  # vLLM, etc. AI_PROVIDER_BASE_URL is required for this vendor.
+  cheap:
+    AI_PROVIDER: "openai_compatible"
+    AI_PROVIDER_BASE_URL: "https://openrouter.ai/api/v1"
+    AI_PROVIDER_API_KEY: "sk-or-..."
+    AI_PROVIDER_MODEL: "qwen-2.5-coder"
+
+  # GigaChat. AI_PROVIDER_SCOPE comes from your personal cabinet.
+  giga:
+    AI_PROVIDER: "gigachat"
+    AI_PROVIDER_API_KEY: "..."
+    AI_PROVIDER_SCOPE: "GIGACHAT_API_PERS"
+    AI_PROVIDER_MODEL: "GigaChat"
+
+  # YandexGPT. AI_PROVIDER_FOLDER_ID is required.
+  yandex:
+    AI_PROVIDER: "yandexgpt"
+    AI_PROVIDER_API_KEY: "..."
+    AI_PROVIDER_FOLDER_ID: "abcdef"
+    AI_PROVIDER_MODEL: "yandexgpt-lite"
+
+# ── Git connections ──────────────────────────────────────────────────────────
+# The key becomes the webhook URL path, so it must match
+# ^[a-z0-9][a-z0-9_-]{2,31}$ and be unique.
+GIT_PROVIDERS:
+  # https://<your-revu-host>/webhooks/gh-main
+  gh-main:
+    GIT_PROVIDER: "github"
+    GIT_PROVIDER_USER_TOKEN: "ghp_..."
+    GIT_PROVIDER_SECRET_TOKEN: "..."
+    # GIT_PROVIDER_URL is optional for github: omit it for github.com, or point
+    # it at a GitHub Enterprise Server REST root (note the /api/v3 suffix).
+    # GIT_PROVIDER_URL: "https://ghe.example.com/api/v3"
+
+  # https://<your-revu-host>/webhooks/gitea-internal
+  gitea-internal:
+    GIT_PROVIDER: "gitea"
+    GIT_PROVIDER_URL: "https://gitea.internal"
+    GIT_PROVIDER_USER_TOKEN: "..."
+    GIT_PROVIDER_SECRET_TOKEN: "..."
+    # This connection uses the cheap profile instead of DEFAULT_AI_PROVIDER.
+    AI_PROVIDER: "cheap"
+    # Optional per-connection review overrides:
+    REVIEW_MODE: "comment"
+    MAX_CONCURRENT_REVIEWS: 1
+    SYSTEM_PROMPT: "This repository is a legacy service: mention backwards compatibility."
+    INCLUDE_PR_DISCUSSION: false
+    # Read the surrounding code here too, with a bigger budget than the default.
+    CONTEXT_DEPTH: "deep"
+    CONTEXT_MAX_CHARS: 80000
+
+  # https://<your-revu-host>/webhooks/gl-internal
+  gl-internal:
+    GIT_PROVIDER: "gitlab"
+    # GIT_PROVIDER_URL is optional for gitlab: omit it for gitlab.com, or set
+    # the instance root of a self-managed installation (ReVu appends /api/v4).
+    GIT_PROVIDER_URL: "https://gitlab.internal"
+    GIT_PROVIDER_USER_TOKEN: "..."
+    # The webhook "Signing token" of GitLab 19.0+ (it starts with whsec_), or the
+    # legacy "Secret token". The signing token is preferred: it proves the body
+    # was not altered, whereas the legacy token is sent as plain text.
+    GIT_PROVIDER_SECRET_TOKEN: "whsec_..."
+    AI_PROVIDER: "yandex"
+    REVIEW_MODE: "inline"
+
+  # https://<your-revu-host>/webhooks/bb-client
+  bb-client:
+    GIT_PROVIDER: "bitbucket"
+    GIT_PROVIDER_URL: "https://bitbucket.client.com"
+    GIT_PROVIDER_USER_TOKEN: "..."
+    GIT_PROVIDER_SECRET_TOKEN: "..."
+    # Bitbucket only: review starts when this user is among the PR reviewers.
+    GIT_PROVIDER_REVIEWER: "revu-bot"
+    AI_PROVIDER: "giga"
+
+# ── HTTP client ──────────────────────────────────────────────────────────────
 # HTTP_CLIENT_TIMEOUT — how long to wait (in seconds) before HTTP requests fail
 HTTP_CLIENT_TIMEOUT: 30.0
-# HTTP_CLIENT_REQUEST_ATTEMPTS — number of retry attempts if HTTP request fails
+# HTTP_CLIENT_REQUEST_ATTEMPTS — how many times a retryable request may be sent
+# in total. Only retries that cannot duplicate a side effect are repeated: a
+# review comment (POST) is not resent after a 5xx or a read timeout, and a 4xx
+# client error is never repeated.
 HTTP_CLIENT_REQUEST_ATTEMPTS: 3
+# HTTP_CLIENT_RETRY_BACKOFF — base delay in seconds for exponential backoff
+# between retries (0.5, 1.0, 2.0, ... capped at 8s). A Retry-After header from
+# the server takes precedence when present.
+HTTP_CLIENT_RETRY_BACKOFF: 0.5
 
-# logger
+# ── Server ───────────────────────────────────────────────────────────────────
+# APP_HOST / APP_PORT — address the built-in uvicorn server binds to
+APP_HOST: "0.0.0.0"
+APP_PORT: 8000
+
+# ── logger ───────────────────────────────────────────────────────────────────
 # LOG_DIR — directory where log files will be stored
 LOG_DIR: "logs"
 # LOG_FILE — file name for logs

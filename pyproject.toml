@@ -1,51 +1,104 @@
 [project]
 name = "revu"
-version = "1.5.0"
+version = "2.4.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "aiosqlite>=0.21.0",
-    "dynaconf>=3.2.11",
-    "fastapi[standard]>=0.118.0",
-    "gigachat>=0.1.42.post2",
-    "hatchling>=1.27.0",
+    "dynaconf>=3.3.5",
+    "fastapi>=0.143.0",
+    "gigachat>=0.2.3",
     "httpx>=0.28.1",
-    "openai>=2.0.1",
-    "unidiff>=0.7.5",
-    "yandex-cloud-ml-sdk>=0.16.0",
+    "openai>=3.31.0",
+    "unidiff>=1.0.1",
+    "pydantic==2.14.1",
+    "yandex-ai-studio-sdk>=0.22.1",
+    "uvicorn>=0.54.0",
+    "dishka>=1.10.1",
+    # One wheel per grammar instead of the aggregated `tree-sitter-language-pack`:
+    # the pack downloads grammars at runtime into a cache directory, which breaks
+    # in closed networks and makes the container write state on the first parse.
+    "tree-sitter",
+    "tree-sitter-bash",
+    "tree-sitter-c",
+    "tree-sitter-c-sharp",
+    "tree-sitter-cpp",
+    "tree-sitter-css",
+    "tree-sitter-dart",
+    "tree-sitter-dockerfile",
+    "tree-sitter-elixir",
+    "tree-sitter-go",
+    "tree-sitter-haskell",
+    "tree-sitter-hcl",
+    "tree-sitter-html",
+    "tree-sitter-java",
+    "tree-sitter-javascript",
+    "tree-sitter-json",
+    "tree-sitter-kotlin",
+    "tree-sitter-lua",
+    "tree-sitter-make",
+    "tree-sitter-ocaml",
+    "tree-sitter-perl",
+    "tree-sitter-php",
+    "tree-sitter-python",
+    "tree-sitter-ruby",
+    "tree-sitter-rust",
+    "tree-sitter-scala",
+    "tree-sitter-sql",
+    "tree-sitter-swift",
+    "tree-sitter-typescript",
+    "tree-sitter-yaml",
+    "tree-sitter-zig",
 ]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.3.0",
-    "ruff>=0.13.3",
+    "pre-commit>=4.7.0",
+    "ruff>=0.17.0",
+    # Kept in step with the mirrors-mypy rev in .pre-commit-config.yaml: the hook
+    # checks the whole tree without project dependencies, while `uv run mypy src`
+    # checks the dependency boundaries too (see the CI workflow).
+    "mypy>=1.20,<2",
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/revu"]
+requires = ["uv_build>=0.9.17,<0.10.0"]
+build-backend = "uv_build"
 
 [project.scripts]
 app = "revu.runner:run"
+revu = "revu.presentation.cli.main:main"
 
 [project.optional-dependencies]
 pytest = [
-    "coverage>=7.10.7",
-    "pytest>=8.4.2",
-    "pytest-asyncio>=1.2.0",
-    "pytest-cov>=7.0.0",
-    "respx>=0.22.0",
+    "coverage>=7.16.2",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
+
+[tool.ruff.lint]
+# E/W/F перекрывают то, что раньше давали flake8 и autopep8, I — isort,
+# UP — pyupgrade. E501 выключен: длинные строки — это промпты на русском,
+# ломать их конкатенацией нельзя, всё остальное держит ruff-format.
+select = ["E", "W", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+# Хук mirrors-mypy выполняется в изолированном окружении без зависимостей
+# проекта и сам передаёт --ignore-missing-imports, поэтому настройка закреплена
+# и здесь: поведение гейта должно быть воспроизводимым и при ручном запуске.
+# Полноценная проверка границ с fastapi/pydantic/openai требует запуска из venv
+# проекта: uv run --with mypy mypy src
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
 
 [tool.pytest.ini_options]
 addopts = [

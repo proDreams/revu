@@ -1,28 +1,41 @@
-from yandex_cloud_ml_sdk import AsyncYCloudML
+from dataclasses import dataclass
 
-from revu.application.config import get_settings
+from yandex_ai_studio_sdk import AsyncAIStudio
+
+from revu.application.entities.config import AIProfileConfig
 from revu.application.entities.exceptions.ai_adapters_exceptions import NoAIResponse
 
 
+@dataclass(frozen=True, slots=True)
+class TextMessage:
+    """One message of a YandexGPT request.
+
+    The SDK accepts any object with ``role`` and ``text`` (its own
+    ``TextMessageProtocol``), which is why this does not depend on the private
+    message module it keeps its own types in.
+    """
+
+    role: str
+    text: str
+
+
 class YandexGPTAdapter:
-    def __init__(self) -> None:
-        self._ai_provider_config = get_settings().AI_PROVIDER_CONFIG
-        self._yandexgpt_client = AsyncYCloudML(
-            folder_id=self._ai_provider_config.AI_PROVIDER_FOLDER_ID,
-            auth=self._ai_provider_config.AI_PROVIDER_API_KEY,  # type: ignore
+    def __init__(self, profile: AIProfileConfig) -> None:
+        self.profile = profile
+        self._yandexgpt_client = AsyncAIStudio(
+            folder_id=profile.folder_id,
+            auth=profile.api_key,
         )
 
-    async def get_chat_response(self, messages: list[dict[str, str]]) -> str:
-        # type: ignore
-        model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
+    async def get_chat_response(self, messages: list[TextMessage]) -> str:
+        # Creating the model is synchronous in this SDK; only `run` is awaited.
+        model = self._yandexgpt_client.models.completions(self.profile.model)
 
         response = await model.run(messages)
 
-        if response:
-            return response[0].text
-        else:
+        text = response[0].text if response else None
+
+        if not text:
             raise NoAIResponse("Yandex GPT returned no response")
 
-
-def get_yandexgpt_adapter() -> YandexGPTAdapter:
-    return YandexGPTAdapter()
+        return text
