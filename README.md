@@ -1,5 +1,7 @@
 # Napkin Tools: ReVu
 
+[English](README-EN.md) · **Русский**
+
 > 🤖 Self-hosted AI code review для ваших Pull Requests.
 
 ![GitHub License](https://img.shields.io/github/license/proDreams/revu)
@@ -136,7 +138,7 @@ ReVu — это AI-ревью для Pull Request: self-hosted вебхук-се
     - [x] YandexGPT
 - [x] Гибкая настройка кастомных промптов для ревью (через `SYSTEM_PROMPT`)
 - [x] Подробная документация по конфигурации и запуску
-- [ ] Англоязычная версия README
+- [x] Англоязычная версия README
 - [x] Покрытие тестами - Coverage 100%
 - [ ] Больше документации и Docstrings во всём коде
 - [ ] Replay-защита вебхуков GitLab по `webhook-timestamp`

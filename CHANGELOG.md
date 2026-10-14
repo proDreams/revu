@@ -9,51 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Ревью прямо в пайплайне.** `revu review` — та же проверка, тот же промпт, но без
-  входящего адреса, постоянного хоста и отдельной учётной записи для бота: код уже
-  склонирован, событие само сообщает, какой это PR, а токен уже выдан job'у.
-  Поддерживаются GitHub Actions, GitLab CI и Gitea Actions; хостинг, репозиторий, номер
-  PR и ревизии определяются по переменным платформы, поэтому в типичном случае команда
-  запускается вообще без аргументов.
-    - Источник изменений: локальный чекаут (по умолчанию), API хостинга или готовый diff
-      из файла. Локальное чтение не тратит ни одного запроса, и `CONTEXT_DEPTH: deep`
-      в пайплайне бесплатен: файлы уже на диске, дерево — одна команда `git`.
-    - Результат: комментарий в PR/MR, если токен это позволяет, либо лог пайплайна, либо
-      один JSON-объект (`--format json`).
-    - `--fail-on never|error|findings` (по умолчанию `never`) решает, что job делает с
-      результатом: гейт — это выбор, а не поведение по умолчанию.
-    - Доступны флаги `--diff-source`, `--diff-file`, `--base`, `--head`, `--repo`, `--pr`,
-      `--provider`, `--depth`, `--comment`/`--stdout`, `--format`, `--fail-on`.
-- Конфигурация для пайплайна собирается из переменных окружения через тот же парсер, что
-  и `settings.yaml`: имена ключей совпадают, проверки и сообщения об ошибках тоже, а сам
-  файл настроек в CI не нужен.
-- `revu serve` — серверный режим под той же командой; `app` и `docker-compose.yaml`
-  продолжают работать как раньше.
-- В образ добавлен `git` (нужен для чтения локального чекаута), а виртуальное окружение
-  попало в `PATH`, чтобы `revu` работал как команда.
-- **Готовый GitHub-экшен** (`action.yml`): делает чекаут сам, с `fetch-depth: 0` — той
-  самой настройкой, забыть которую значит получить ревью пустого диффа, — и запускает образ.
-- **Замечания можно показать без прав на запись**: `--format github-annotations` печатает
-  аннотации, которые GitHub ставит у изменённых строк, `--format gitlab-codequality`
-  пишет отчёт для виджета merge request. Ни то, ни другое не создаёт комментариев и не
-  требует токена на запись — это ответ на read-only `CI_JOB_TOKEN` у GitLab.
-- `--output PATH` — куда писать отчёт (по умолчанию `revu-codequality.json`).
-- `NOTIFY_ON_FAILURE` работает и в пайплайне: если ревью не удалось, в PR уходит короткий
-  комментарий с типом ошибки (нужен токен на запись), а подробности остаются в логе.
+- **Reviews run in a pipeline, with nothing to deploy.** `revu review` is the same
+  check with the same prompt, but without an inbound address, a permanent host or a
+  bot account of its own: the code is already checked out, the event says which pull
+  request it is, and the job already holds a token. GitHub Actions, GitLab CI and
+  Gitea Actions are supported; the host, the repository, the pull request number and
+  the revisions come from the platform's own variables, so a usual run takes no
+  arguments at all.
+    - Where the change comes from: the local checkout (the default), the host API, or
+      a saved diff file. Reading locally spends no requests at all, and `deep` context
+      is free in a pipeline: the files are on disk and the tree is one `git` command.
+    - Where the answer goes: a comment in the pull request when a token allows it, the
+      job log otherwise, or one JSON object with `--format json`.
+    - `--fail-on never|error|findings` (`never` by default) decides what the job does
+      about the result: a gate is a choice, not a default.
+    - The flags are `--diff-source`, `--diff-file`, `--base`, `--head`, `--repo`,
+      `--pr`, `--provider`, `--depth`, `--comment`/`--stdout`, `--format`, `--fail-on`
+      and `--output`.
+- A pipeline's configuration is built from the environment by the same parser that
+  reads `settings.yaml`: the key names match, so do the checks and the error messages,
+  and the settings file itself is not needed in CI.
+- `revu serve` is the server under the same command; `app` and `docker-compose.yaml`
+  keep working as before.
+- `git` was added to the image (a local checkout is read with it) and the virtual
+  environment to `PATH`, so `revu` works as a command.
+- **A GitHub action** (`action.yml`) that checks the change out itself, with
+  `fetch-depth: 0` — the setting whose absence means a review of an empty diff — and
+  runs the image.
+- **Findings can be shown without permission to write.** `--format
+  github-annotations` prints the annotations GitHub places next to the changed lines,
+  and `--format gitlab-codequality` writes the report the merge request widget reads.
+  Neither creates a comment, so neither needs a token that may write: this is the
+  answer to GitLab's read-only `CI_JOB_TOKEN`.
+- `--output PATH` chooses where a report is written (`revu-codequality.json` by
+  default).
+- `NOTIFY_ON_FAILURE` works in a pipeline too: a review that could not be completed
+  leaves a short comment naming the kind of error (a token that may write is
+  required), with the details in the log.
 
 ### Changed
 
-- `GitProviderProtocol` разделён на `GitReaderProtocol` (diff, файлы, дерево, прошлые
-  комментарии) и `CommentPublisherProtocol` (комментарий, инлайн-ревью). Хост-порты
-  реализуют оба, поэтому серверный режим не изменился, а `ContextBuilder` теперь просит
-  только читающую половину — ту, которой он и пользовался.
-- Сценарий ревью вынесен в `ReviewRunner`, который принимает источник и приёмник
-  аргументами и возвращает `ReviewOutcome`. `ReviewService` стал тем, что делает ревью
-  вебхук-ревью: держит бюджет параллелизма подключения и превращает событие в запрос.
-- В пайплайне ревью больше не заменяет лог комментарием, а дополняет: текст всегда виден
-  в логе job'а и, если токен позволяет, уходит ещё и комментарием в PR/MR.
-- Подпись ReVu (`<!-- revu -->` и инлайн-бейдж) убрана из тех мест, где она была бы
-  видимым мусором: из аннотаций GitHub и из списка замечаний в логе.
+- `GitProviderProtocol` was split into `GitReaderProtocol` (diff, files, tree, earlier
+  conversation) and `CommentPublisherProtocol` (comment, inline review). Host ports
+  implement both, so the server is unaffected, while `ContextBuilder` now asks for the
+  reading half only — the one it always used.
+- The review itself moved into `ReviewRunner`, which takes its source and its
+  destination as arguments and returns a `ReviewOutcome`. `ReviewService` is what
+  makes a review a *webhook* review: it holds the connection's concurrency budget and
+  turns an event into a request.
+- In a pipeline the review no longer replaces the log with a comment but adds to it:
+  the text is always in the job log and, when a token allows, also posted as a comment.
+- ReVu's signature (`<!-- revu -->` and the inline badge) was removed from the places
+  where it would be visible noise rather than invisible identification: GitHub
+  annotations, the Code Quality report, and the list of findings in the log.
 
 ## [2.3.0] - 2026-10-14
 
