@@ -10,7 +10,10 @@
 [![Кот на салфетке](https://img.shields.io/badge/Telegram-Кот_на_салфетке-blue)](https://t.me/+Li2vbxfWo0Q4ZDk6)
 
 <p align="center">
-  <img src=".github/images/logo.png" width="560" alt="ReVu">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/images/logo-dark.png">
+    <img src=".github/images/logo.png" width="560" alt="ReVu">
+  </picture>
 </p>
 
 ---
