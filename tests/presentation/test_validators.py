@@ -244,7 +244,7 @@ async def test_bitbucket_ignores_a_delivery_for_another_reviewer(make_tenant):
 async def test_an_unsupported_host_is_reported(make_tenant):
     """Unreachable through the configuration, but the guard must still hold."""
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    tenant = make_tenant(make_connection(host="gitlab"))  # type: ignore[arg-type]
+    tenant = make_tenant(make_connection(host="sourceforge"))  # type: ignore[arg-type]
     request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
 
     with pytest.raises(UnknownGitProviderException):

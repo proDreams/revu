@@ -4,6 +4,7 @@ from dishka import Provider, Scope, provide
 
 from revu.application.config import load_settings
 from revu.application.entities.config import Settings
+from revu.application.services.revision_store import ReviewedRevisionStore
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
@@ -29,3 +30,8 @@ class AppProvider(Provider):
             yield gateway
         finally:
             await gateway.aclose()
+
+    @provide
+    def reviewed_revisions(self) -> ReviewedRevisionStore:
+        """Application-wide: the memory of GitLab's ambiguous update events."""
+        return ReviewedRevisionStore()

@@ -13,9 +13,10 @@ from unidiff import PatchSet
 
 from revu.application.config import get_logger
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
+    BitbucketReviewCommentDTO,
     GiteaReviewCommentDTO,
-    GithubReviewCommentDTO,
+    GitHubReviewCommentDTO,
+    GitLabReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -120,6 +121,21 @@ class DiffAnchors:
             or (new_position == 0 and old_position in self.source_lines(path))
         )
 
+    def is_gitlab_anchor(self, path: str, old_line: int | None, new_line: int | None) -> bool:
+        # GitLab addresses a note by the line on each side of the diff: an added
+        # line has only a new line, a removed line only an old one, and a context
+        # line needs both. Sending the wrong combination is rejected outright.
+        if new_line is None and old_line is None:
+            return False
+
+        if old_line is None:
+            return new_line in self.added.get(path, _EMPTY_LINES)
+
+        if new_line is None:
+            return old_line in self.removed.get(path, _EMPTY_LINES)
+
+        return (old_line, new_line) in self.context.get(path, frozenset())
+
     def is_bitbucket_anchor(self, path: str, line_type: str, line: int) -> bool:
         # Bitbucket rejects a `lineType` that contradicts the diff, so the kind
         # of line is checked exactly here.
@@ -138,7 +154,7 @@ def _is_anchored(comment: object, anchors: DiffAnchors, git_host: GitProviderEnu
     """Whether one comment points at a line the diff really contains."""
     match git_host:
         case GitProviderEnum.GITHUB:
-            if not isinstance(comment, GithubReviewCommentDTO):
+            if not isinstance(comment, GitHubReviewCommentDTO):
                 return False
 
             path = anchors.resolve_path(comment.path)
@@ -153,8 +169,16 @@ def _is_anchored(comment: object, anchors: DiffAnchors, git_host: GitProviderEnu
 
             return path is not None and anchors.is_gitea_anchor(path, comment.old_position, comment.new_position)
 
+        case GitProviderEnum.GITLAB:
+            if not isinstance(comment, GitLabReviewCommentDTO):
+                return False
+
+            path = anchors.resolve_path(comment.path)
+
+            return path is not None and anchors.is_gitlab_anchor(path, comment.old_line, comment.new_line)
+
         case GitProviderEnum.BITBUCKET:
-            if not isinstance(comment, BitBucketReviewCommentDTO):
+            if not isinstance(comment, BitbucketReviewCommentDTO):
                 return False
 
             path = anchors.resolve_path(comment.path)

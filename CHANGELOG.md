@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-14
+
+### Added
+
+- **GitLab** as a git provider, including self-managed instances. Add a
+  connection with `GIT_PROVIDER: "gitlab"` and point the webhook at
+  `/webhooks/<key>`; `GIT_PROVIDER_URL` is optional and defaults to gitlab.com.
+  Inline reviews are published as merge request discussions, positioned with the
+  three commit SHAs GitLab requires.
+- GitLab webhook authentication, both ways GitLab offers it: the signing token of
+  GitLab 19.0 and later (Standard Webhooks: HMAC-SHA256 over
+  `id.timestamp.body`, sent in `webhook-signature`), and the legacy plain
+  `X-Gitlab-Token` that earlier versions send. The signature is preferred when
+  present, because the legacy token does not authenticate the body.
+- GitLab deliveries whose merge request revision was already reviewed are
+  acknowledged without a second review. GitLab sends the `update` action for a
+  renamed title or a new label as well as for a push and has no field that
+  separates them ([gitlab-org/gitlab#10824](https://gitlab.com/gitlab-org/gitlab/-/work_items/10824)),
+  so the head commit decides. The memory is bounded and evicts the least
+  recently used entry, which costs at most one redundant review.
+
+### Changed
+
+- The event header check ignores case, because GitLab spells its event
+  `Merge Request Hook`.
+
 ## [2.0.0] - 2026-10-14
 
 ### Breaking changes
@@ -79,6 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.1.0]: https://github.com/proDreams/revu/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/proDreams/revu/compare/1.7.0...2.0.0
 
 ## [1.7.0] - 2026-10-14

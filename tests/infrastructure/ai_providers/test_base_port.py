@@ -7,6 +7,7 @@ from revu.application.entities.default_prompts import (
     COMMENT_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
+    GITLAB_INLINE_PROMPT,
 )
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
@@ -14,6 +15,7 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import (
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
     GithubReviewResponse,
+    GitlabReviewResponse,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.ai_providers.base import BaseAIPort
@@ -29,11 +31,23 @@ VALID_PAYLOAD = '{"general_comment": "c", "comments": [{"path": "p", "line": 1, 
     [
         (GitProviderEnum.GITHUB, GITHUB_INLINE_PROMPT),
         (GitProviderEnum.GITEA, GITEA_INLINE_PROMPT),
+        (GitProviderEnum.GITLAB, GITLAB_INLINE_PROMPT),
         (GitProviderEnum.BITBUCKET, BITBUCKET_INLINE_PROMPT),
     ],
 )
 def test_get_prompt_selects_the_host_prompt(git_host, expected):
     assert BaseAIPort._get_prompt(git_host) == expected
+
+
+@pytest.mark.parametrize(
+    ("git_host", "expected"),
+    [
+        (GitProviderEnum.GITHUB, GithubReviewResponse),
+        (GitProviderEnum.GITLAB, GitlabReviewResponse),
+    ],
+)
+def test_get_response_model_selects_the_host_model(git_host, expected):
+    assert BaseAIPort._get_response_model(git_host) is expected
 
 
 def test_get_prompt_rejects_an_unknown_host():

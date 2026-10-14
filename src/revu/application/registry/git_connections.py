@@ -14,6 +14,7 @@ from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.git_providers.bitbucket.bitbucket_port import BitbucketPort
 from revu.infrastructure.git_providers.gitea.gitea_port import GiteaPort
 from revu.infrastructure.git_providers.github.github_port import GithubPort
+from revu.infrastructure.git_providers.gitlab.gitlab_port import GitlabPort
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
@@ -23,6 +24,8 @@ def _build_port(config: GitConnectionConfig, http_client: HttpClientGateway) -> 
             return GithubPort(http_client=http_client, config=config)
         case GitProviderEnum.GITEA:
             return GiteaPort(http_client=http_client, config=config)
+        case GitProviderEnum.GITLAB:
+            return GitlabPort(http_client=http_client, config=config)
         case GitProviderEnum.BITBUCKET:
             return BitbucketPort(http_client=http_client, config=config)
         case _:

@@ -7,9 +7,10 @@ from revu.application.services.diff_anchors import (
     drop_unanchored_comments,
 )
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
+    BitbucketReviewCommentDTO,
     GiteaReviewCommentDTO,
-    GithubReviewCommentDTO,
+    GitHubReviewCommentDTO,
+    GitLabReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -116,6 +117,25 @@ def test_gitea_anchors(anchors, old_position, new_position, expected):
 
 
 @pytest.mark.parametrize(
+    ("old_line", "new_line", "expected"),
+    [
+        (None, 11, True),  # added line: new side only
+        (None, 12, True),
+        (11, None, True),  # removed line: old side only
+        (10, 10, True),  # context: both sides
+        (12, 13, True),
+        (None, 13, False),  # 13 is a context line, not an added one
+        (12, None, False),  # 12 was added, not removed
+        (10, None, False),  # 10 is a context line, not a removed one
+        (10, 11, False),  # not a context pair
+        (None, None, False),  # no side at all cannot be positioned
+    ],
+)
+def test_gitlab_anchors(anchors, old_line, new_line, expected):
+    assert anchors.is_gitlab_anchor("app.py", old_line, new_line) is expected
+
+
+@pytest.mark.parametrize(
     ("line_type", "line", "expected"),
     [
         ("ADDED", 11, True),
@@ -137,7 +157,7 @@ def _review(*comments) -> ReviewResponseDTO:
 
 def test_the_general_comment_is_always_kept(anchors):
     review, dropped = drop_unanchored_comments(
-        _review(GithubReviewCommentDTO(path="app.py", line=12, body="ok")),
+        _review(GitHubReviewCommentDTO(path="app.py", line=12, body="ok")),
         anchors,
         GitProviderEnum.GITHUB,
     )
@@ -150,10 +170,10 @@ def test_the_general_comment_is_always_kept(anchors):
 def test_github_comments_outside_the_diff_are_dropped(anchors):
     review, dropped = drop_unanchored_comments(
         _review(
-            GithubReviewCommentDTO(path="app.py", line=12, side="RIGHT", body="kept"),
-            GithubReviewCommentDTO(path="app.py", line=500, side="RIGHT", body="dropped"),
-            GithubReviewCommentDTO(path="app.py", line=13, side="LEFT", body="dropped too"),
-            GithubReviewCommentDTO(path="missing.py", line=12, side="RIGHT", body="dropped as well"),
+            GitHubReviewCommentDTO(path="app.py", line=12, side="RIGHT", body="kept"),
+            GitHubReviewCommentDTO(path="app.py", line=500, side="RIGHT", body="dropped"),
+            GitHubReviewCommentDTO(path="app.py", line=13, side="LEFT", body="dropped too"),
+            GitHubReviewCommentDTO(path="missing.py", line=12, side="RIGHT", body="dropped as well"),
         ),
         anchors,
         GitProviderEnum.GITHUB,
@@ -180,8 +200,8 @@ def test_gitea_comments_outside_the_diff_are_dropped(anchors):
 def test_bitbucket_comments_outside_the_diff_are_dropped(anchors):
     review, dropped = drop_unanchored_comments(
         _review(
-            BitBucketReviewCommentDTO(path="app.py", line=11, lineType="REMOVED", body="kept"),
-            BitBucketReviewCommentDTO(path="app.py", line=10, lineType="ADDED", body="dropped"),
+            BitbucketReviewCommentDTO(path="app.py", line=11, lineType="REMOVED", body="kept"),
+            BitbucketReviewCommentDTO(path="app.py", line=10, lineType="ADDED", body="dropped"),
         ),
         anchors,
         GitProviderEnum.BITBUCKET,
@@ -194,14 +214,16 @@ def test_bitbucket_comments_outside_the_diff_are_dropped(anchors):
 # A comment built for a different host must never reach the git host.
 FOREIGN_COMMENTS = {
     GitProviderEnum.GITHUB: GiteaReviewCommentDTO(path="app.py", old_position=0, new_position=12, body="foreign"),
-    GitProviderEnum.GITEA: GithubReviewCommentDTO(path="app.py", line=12, body="foreign"),
-    GitProviderEnum.BITBUCKET: GithubReviewCommentDTO(path="app.py", line=12, body="foreign"),
+    GitProviderEnum.GITEA: GitHubReviewCommentDTO(path="app.py", line=12, body="foreign"),
+    GitProviderEnum.BITBUCKET: GitHubReviewCommentDTO(path="app.py", line=12, body="foreign"),
+    GitProviderEnum.GITLAB: GitHubReviewCommentDTO(path="app.py", line=12, body="foreign"),
 }
 
 MATCHING_COMMENTS = {
-    GitProviderEnum.GITHUB: GithubReviewCommentDTO(path="app.py", line=12, side="RIGHT", body="ok"),
+    GitProviderEnum.GITHUB: GitHubReviewCommentDTO(path="app.py", line=12, side="RIGHT", body="ok"),
     GitProviderEnum.GITEA: GiteaReviewCommentDTO(path="app.py", old_position=0, new_position=12, body="ok"),
-    GitProviderEnum.BITBUCKET: BitBucketReviewCommentDTO(path="app.py", line=11, lineType="REMOVED", body="ok"),
+    GitProviderEnum.BITBUCKET: BitbucketReviewCommentDTO(path="app.py", line=11, lineType="REMOVED", body="ok"),
+    GitProviderEnum.GITLAB: GitLabReviewCommentDTO(path="app.py", new_line=12, body="ok"),
 }
 
 
@@ -224,9 +246,9 @@ def test_a_matching_comment_is_kept(anchors, git_host):
 
 def test_an_unknown_host_drops_everything(anchors):
     review, dropped = drop_unanchored_comments(
-        _review(GithubReviewCommentDTO(path="app.py", line=12, body="x")),
+        _review(GitHubReviewCommentDTO(path="app.py", line=12, body="x")),
         anchors,
-        "gitlab",  # type: ignore[arg-type]
+        "sourceforge",  # type: ignore[arg-type]
     )
 
     assert review.comments == []

@@ -2,7 +2,7 @@ from urllib.parse import urljoin
 
 from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
+    BitbucketReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.exceptions.git_provider_exceptions import (
@@ -74,7 +74,7 @@ class BitbucketPort(GitProviderProtocol):
 
     async def send_inline(self, sha: str, repo_owner: str, review: ReviewResponseDTO, index: int) -> None:
         for comment in review.comments:
-            if not isinstance(comment, BitBucketReviewCommentDTO):
+            if not isinstance(comment, BitbucketReviewCommentDTO):
                 raise UnsupportedReviewCommentException(
                     f"{type(comment).__name__} comments cannot be published to Bitbucket"
                 )

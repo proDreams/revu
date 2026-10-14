@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class GitHubReviewComment(BaseModel):
@@ -45,6 +45,36 @@ class BitbucketReviewComment(BaseModel):
         return normalized or "CONTEXT"
 
 
+class GitLabReviewComment(BaseModel):
+    """An inline GitLab diff note, anchored by the lines it spans.
+
+    GitLab positions a note with the line number on each side of the diff: an
+    added line carries only ``new_line``, a removed line only ``old_line``, and a
+    context line both. A comment with neither cannot be positioned at all.
+    """
+
+    path: str
+    body: str
+    new_line: int | None = None
+    old_line: int | None = None
+
+    @field_validator("new_line", "old_line", mode="before")
+    @classmethod
+    def _blank_to_none(cls, value: object) -> object:
+        """Providers without a schema like to answer an inapplicable line as ""."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+
+        return value
+
+    @model_validator(mode="after")
+    def _require_a_line(self) -> "GitLabReviewComment":
+        if self.new_line is None and self.old_line is None:
+            raise ValueError("a GitLab comment needs new_line, old_line or both")
+
+        return self
+
+
 class ReviewResponse(BaseModel):
     general_comment: str
 
@@ -61,6 +91,10 @@ class BitbucketReviewResponse(ReviewResponse):
     comments: list[BitbucketReviewComment]
 
 
-# The three shapes differ only in their comment type, which is exactly what the
-# git host decides; this alias keeps `.comments` visible to the type checker.
-InlineReviewResponse = GithubReviewResponse | GiteaReviewResponse | BitbucketReviewResponse
+class GitlabReviewResponse(ReviewResponse):
+    comments: list[GitLabReviewComment]
+
+
+# The shapes differ only in their comment type, which is exactly what the git host
+# decides; this alias keeps `.comments` visible to the type checker.
+InlineReviewResponse = GithubReviewResponse | GiteaReviewResponse | BitbucketReviewResponse | GitlabReviewResponse

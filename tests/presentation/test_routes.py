@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -14,7 +15,12 @@ from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 from revu.domain.entities.exceptions.base import CoreException
 from revu.presentation.webhooks.routes import review_pull_request
-from tests.conftest import BITBUCKET_SECRET, GITEA_SECRET, GITHUB_SECRET
+from tests.conftest import (
+    BITBUCKET_SECRET,
+    GITEA_SECRET,
+    GITHUB_SECRET,
+    GITLAB_SECRET,
+)
 from tests.fixtures.presentation_fixtures.payloads import (
     INVALID_ACTION_WEBHOOK_PAYLOAD,
     SOURCE_COMMIT_SHA,
@@ -138,6 +144,53 @@ def test_a_bitbucket_connection_reviews_new_commits(client, reviews):
     assert response.status_code == 200
     assert [key for key, _ in reviews] == ["bb-client"]
     assert reviews[0][1].commit_sha == SOURCE_COMMIT_SHA
+
+
+def test_a_gitlab_connection_reviews_a_merge_request(client, reviews):
+    """GitLab's own framing (event header, Standard Webhooks signature) end to end."""
+    payload = {
+        "object_kind": "merge_request",
+        "object_attributes": {
+            "iid": 11,
+            "title": "Add feature X",
+            "action": "open",
+            "last_commit": {"id": SOURCE_COMMIT_SHA},
+        },
+        "project": {"path_with_namespace": "group/sub/project"},
+    }
+    body = json.dumps(payload).encode()
+    message_id = "msg-1"
+    timestamp = "1700000000"
+    key = base64.b64decode(GITLAB_SECRET.removeprefix("whsec_"))
+    digest = hmac.new(
+        key,
+        b".".join([message_id.encode(), timestamp.encode(), body]),
+        hashlib.sha256,
+    ).digest()
+    headers = {
+        "x-gitlab-event": "Merge Request Hook",
+        "webhook-id": message_id,
+        "webhook-timestamp": timestamp,
+        "webhook-signature": "v1," + base64.b64encode(digest).decode(),
+    }
+
+    response = client.post("/webhooks/gl-self", content=body, headers=headers)
+
+    assert response.status_code == 200
+    assert [key for key, _ in reviews] == ["gl-self"]
+    assert reviews[0][1].repo_full_name == "group/sub/project"
+    assert reviews[0][1].pr_number == 11
+    assert reviews[0][1].commit_sha == SOURCE_COMMIT_SHA
+
+
+def test_a_gitlab_token_of_another_connection_is_rejected(client, reviews):
+    body = json.dumps({"object_kind": "merge_request"}).encode()
+    headers = {"x-gitlab-event": "Merge Request Hook", "x-gitlab-token": GITHUB_SECRET}
+
+    response = client.post("/webhooks/gl-self", content=body, headers=headers)
+
+    assert response.status_code == 403
+    assert reviews == []
 
 
 def test_health_endpoint(client):

@@ -1,3 +1,4 @@
+import base64
 from dataclasses import replace
 from unittest.mock import AsyncMock
 
@@ -26,6 +27,13 @@ GITEA_TOKEN = "gitea-token"
 BITBUCKET_TOKEN = "bitbucket-token"
 GITEA_URL = "https://gitea.internal"
 BITBUCKET_URL = "https://bitbucket.internal"
+
+# GitLab's signing token is `whsec_` followed by the base64 body of the HMAC key,
+# which is what makes it different from a plain shared secret.
+GITLAB_SIGNING_KEY = b"0123456789abcdef0123456789abcdef"
+GITLAB_SECRET = "whsec_" + base64.b64encode(GITLAB_SIGNING_KEY).decode()
+GITLAB_TOKEN = "gitlab-token"
+GITLAB_URL = "https://gitlab.internal"
 
 
 def make_ai_profile(**overrides) -> AIProfileConfig:
@@ -80,6 +88,13 @@ def make_settings(**overrides) -> Settings:
                     secret_token=BITBUCKET_SECRET,
                     base_url=BITBUCKET_URL,
                     reviewer=None,
+                ),
+                "gl-self": make_connection(
+                    key="gl-self",
+                    host=GitProviderEnum.GITLAB,
+                    user_token=GITLAB_TOKEN,
+                    secret_token=GITLAB_SECRET,
+                    base_url=GITLAB_URL,
                 ),
             },
             ai_profiles={

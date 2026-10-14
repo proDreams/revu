@@ -164,12 +164,12 @@ def test_github_enterprise_base_url_is_kept():
 
 
 def test_an_unsupported_host_is_rejected():
-    raw = _with_connection(GIT_PROVIDER="gitlab")
+    raw = _with_connection(GIT_PROVIDER="sourceforge")
 
     with pytest.raises(ConfigError) as exc_info:
         load_settings(raw)
 
-    assert "must be one of github, gitea, bitbucket" in str(exc_info.value)
+    assert "must be one of github, gitea, gitlab, bitbucket" in str(exc_info.value)
 
 
 @pytest.mark.parametrize("key", ["GIT_PROVIDER_USER_TOKEN", "GIT_PROVIDER_SECRET_TOKEN"])

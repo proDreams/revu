@@ -79,6 +79,20 @@ GIT_PROVIDERS:
     MAX_CONCURRENT_REVIEWS: 1
     SYSTEM_PROMPT: "This repository is a legacy service: mention backwards compatibility."
 
+  # https://<your-revu-host>/webhooks/gl-internal
+  gl-internal:
+    GIT_PROVIDER: "gitlab"
+    # GIT_PROVIDER_URL is optional for gitlab: omit it for gitlab.com, or set
+    # the instance root of a self-managed installation (ReVu appends /api/v4).
+    GIT_PROVIDER_URL: "https://gitlab.internal"
+    GIT_PROVIDER_USER_TOKEN: "..."
+    # The webhook "Signing token" of GitLab 19.0+ (it starts with whsec_), or the
+    # legacy "Secret token". The signing token is preferred: it proves the body
+    # was not altered, whereas the legacy token is sent as plain text.
+    GIT_PROVIDER_SECRET_TOKEN: "whsec_..."
+    AI_PROVIDER: "yandex"
+    REVIEW_MODE: "inline"
+
   # https://<your-revu-host>/webhooks/bb-client
   bb-client:
     GIT_PROVIDER: "bitbucket"

@@ -6,6 +6,7 @@ from revu.application.config import get_logger
 from revu.application.entities.tenant import TenantContext
 from revu.application.services.failure_notice import failure_notice
 from revu.application.services.review_service import ReviewService
+from revu.application.services.revision_store import ReviewedRevisionStore
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.infrastructure.logger.connection_context import (
     reset_connection_key,
@@ -90,11 +91,12 @@ async def webhook(
     tenant: FromDishka[TenantContext],
     background_tasks: BackgroundTasks,
     service: FromDishka[ReviewService],
+    revisions: FromDishka[ReviewedRevisionStore],
 ) -> None:
     """Accept a delivery for one configured connection.
 
     The connection is resolved from the URL (never from the body), its own secret
     verifies the signature, and its own AI profile runs the review.
     """
-    webhook_data = await parse_webhook_event(request=request, tenant=tenant)
+    webhook_data = await parse_webhook_event(request=request, tenant=tenant, revisions=revisions)
     background_tasks.add_task(review_pull_request, service, tenant, webhook_data)

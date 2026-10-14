@@ -86,8 +86,13 @@ def test_an_unknown_connection_key_is_rejected():
 def test_the_registry_reports_hosts_for_the_startup_summary():
     registry = GitConnectionRegistry(settings=make_settings(), http_client=AsyncMock())
 
-    assert registry.hosts() == {"gh-main": "github", "gitea-int": "gitea", "bb-client": "bitbucket"}
-    assert registry.keys() == ["bb-client", "gh-main", "gitea-int"]
+    assert registry.hosts() == {
+        "gh-main": "github",
+        "gitea-int": "gitea",
+        "bb-client": "bitbucket",
+        "gl-self": "gitlab",
+    }
+    assert registry.keys() == ["bb-client", "gh-main", "gitea-int", "gl-self"]
 
 
 def test_a_connection_uses_the_default_ai_profile(http_gateway):
@@ -119,7 +124,7 @@ def test_an_unknown_profile_name_is_rejected(http_gateway):
 @pytest.mark.parametrize(
     ("builder", "value"),
     [
-        ("git", "gitlab"),
+        ("git", "sourceforge"),
         ("ai", "gemini"),
     ],
 )

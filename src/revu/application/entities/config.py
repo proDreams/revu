@@ -16,11 +16,12 @@ from revu.domain.entities.exceptions.base import CoreException
 
 SETTINGS_FILE = "config/settings.yaml"
 
-# Only the hosts ReVu actually implements; GitProviderEnum also lists gitlab,
-# which has no port yet.
+# Only the hosts ReVu actually implements; GitProviderEnum lists nothing else,
+# so this is the single place that decides what a configuration may request.
 SUPPORTED_GIT_PROVIDERS = (
     GitProviderEnum.GITHUB,
     GitProviderEnum.GITEA,
+    GitProviderEnum.GITLAB,
     GitProviderEnum.BITBUCKET,
 )
 
@@ -32,8 +33,8 @@ REQUIRED_AI_KEYS: dict[AIProviderEnum, tuple[str, ...]] = {
     AIProviderEnum.YANDEXGPT: ("AI_PROVIDER_API_KEY", "AI_PROVIDER_MODEL", "AI_PROVIDER_FOLDER_ID"),
 }
 
-# Connections that are always self-hosted need an explicit base URL; github.com
-# has a default and only uses one for GitHub Enterprise.
+# Connections that are always self-hosted need an explicit base URL. github.com
+# and gitlab.com have public defaults and only use one for a self-hosted install.
 GIT_PROVIDERS_REQUIRING_URL = (GitProviderEnum.GITEA, GitProviderEnum.BITBUCKET)
 
 # The key becomes a path segment of the webhook URL, so keep it URL-safe.

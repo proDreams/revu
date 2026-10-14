@@ -1,4 +1,4 @@
-# ReVu 2.0 configuration.
+# ReVu 2.1 configuration.
 #
 # One instance serves many git providers. Each entry under GIT_PROVIDERS gets its
 # own webhook URL: https://<your-revu-host>/webhooks/<key>
@@ -38,12 +38,15 @@ GIT_PROVIDERS:
     # GIT_PROVIDER — which git hosting service you use:
     # "github"
     # "gitea"
+    # "gitlab"
     # "bitbucket"
     GIT_PROVIDER: "gitea"
     # GIT_PROVIDER_URL — base URL of your git server.
-    # Required for gitea and bitbucket. Optional for github: omit it to use
-    # github.com, or set the REST root of a GitHub Enterprise Server instance,
-    # including the /api/v3 suffix (e.g. "https://ghe.example.com/api/v3").
+    # Required for gitea and bitbucket. Optional for github and gitlab: omit it
+    # to use github.com or https://gitlab.com. For a self-managed instance set
+    # the instance root; ReVu appends /api/v4 itself. For GitHub Enterprise
+    # Server set the REST root including the /api/v3 suffix
+    # (e.g. "https://ghe.example.com/api/v3").
     GIT_PROVIDER_URL: "https://gitea.example.com"
     # GIT_PROVIDER_USER_TOKEN — personal access token of the bot/user to access API
     GIT_PROVIDER_USER_TOKEN: "asdasdasd"
@@ -52,7 +55,10 @@ GIT_PROVIDERS:
     # X-Hub-Signature-256 / X-Gitea-Signature / X-Hub-Signature (sha256=<hex>).
     # For Bitbucket the signature is mandatory: Data Center 8.9+ and a filled-in
     # "Secret" field on the webhook, otherwise requests are rejected with 403.
-    # An empty value is rejected at startup.
+    # For GitLab this is either the webhook "Signing token" (GitLab 19.0+,
+    # recommended: the payload is signed and the body is authenticated) or the
+    # legacy "Secret token" sent in X-Gitlab-Token (plain text, not bound to the
+    # body). An empty value is rejected at startup.
     GIT_PROVIDER_SECRET_TOKEN: "asdasdasd"
     # (optional) AI_PROVIDER — use another AI profile for this connection only,
     # for example "cheap". Must exist in AI_PROVIDERS.

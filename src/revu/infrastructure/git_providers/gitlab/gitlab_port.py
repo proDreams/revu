@@ -1,0 +1,155 @@
+from typing import cast
+from urllib.parse import quote, urljoin
+
+from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.exceptions.provider_exceptions import (
+    GitProviderException,
+)
+from revu.domain.entities.dto.ai_provider_dto import (
+    GitLabReviewCommentDTO,
+    ReviewResponseDTO,
+)
+from revu.domain.entities.exceptions.git_provider_exceptions import (
+    UnsupportedReviewCommentException,
+)
+from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
+from revu.infrastructure.git_providers.gitlab.helpers import json_diff_to_unified
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
+
+# GitLab caps per_page at 100 and reports no total, so paging stops on a short
+# page. The limit only guards against a server that always answers a full one.
+DIFF_PAGE_SIZE = 100
+MAX_DIFF_PAGES = 100
+
+
+class GitlabPort(GitProviderProtocol):
+    """GitLab, including self-managed instances.
+
+    Inline notes are positioned by three commit SHAs that only the versions
+    endpoint reports, so publishing them costs one extra request per review.
+    """
+
+    DEFAULT_API_URL = "https://gitlab.com"
+
+    def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
+        self.http_client = http_client
+        self.config = config
+        self.gitlab_token = config.user_token
+        self.gitlab_url = config.base_url or self.DEFAULT_API_URL
+
+    def _get_headers(self) -> dict[str, str]:
+        return {"PRIVATE-TOKEN": self.gitlab_token}
+
+    def _api_url(self, path: str) -> str:
+        return urljoin(self.gitlab_url.rstrip("/") + "/", f"api/v4/{path}")
+
+    @staticmethod
+    def _project(repo: str) -> str:
+        """Encode a project path: GitLab accepts an id or ``group%2Fproject``."""
+        return quote(repo, safe="")
+
+    async def fetch_diff(self, repo: str, index: int) -> str:
+        """Fetch every diff page and render it as one unified diff.
+
+        GitLab paginates ``/diffs`` and returns a bare array, so the end of the
+        data is a page shorter than the requested size (the gateway hands back the
+        parsed body, not the ``X-Next-Page`` header).
+        """
+        project = self._project(repo)
+        file_diffs: list[dict] = []
+
+        for page in range(1, MAX_DIFF_PAGES + 1):
+            page_diffs = await self.http_client.get(
+                url=self._api_url(
+                    f"projects/{project}/merge_requests/{index}/diffs?per_page={DIFF_PAGE_SIZE}&page={page}"
+                ),
+                headers=self._get_headers(),
+            )
+
+            if not isinstance(page_diffs, list) or not page_diffs:
+                break
+
+            file_diffs.extend(diff for diff in page_diffs if isinstance(diff, dict))
+
+            if len(page_diffs) < DIFF_PAGE_SIZE:
+                break
+
+        return json_diff_to_unified(file_diffs)
+
+    async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
+        await self.http_client.post(
+            url=self._api_url(f"projects/{self._project(repo_owner)}/merge_requests/{index}/notes"),
+            headers=self._get_headers(),
+            payload={"body": review},
+        )
+
+    async def _get_position_shas(self, project: str, index: int) -> tuple[str, str, str]:
+        """The base, head and start SHAs a GitLab diff note is positioned against."""
+        versions = await self.http_client.get(
+            url=self._api_url(f"projects/{project}/merge_requests/{index}/versions"),
+            headers=self._get_headers(),
+        )
+
+        latest = versions[0] if isinstance(versions, list) and versions else None
+        if not isinstance(latest, dict):
+            raise GitProviderException(f"GitLab reported no diff versions for merge request {index}")
+
+        base_sha = latest.get("base_commit_sha")
+        head_sha = latest.get("head_commit_sha")
+        start_sha = latest.get("start_commit_sha")
+
+        if not all(isinstance(sha, str) and sha for sha in (base_sha, head_sha, start_sha)):
+            raise GitProviderException(f"GitLab reported incomplete diff versions for merge request {index}")
+
+        # Verified just above; `all` does not narrow the three names for the checker.
+        return cast(tuple[str, str, str], (base_sha, head_sha, start_sha))
+
+    async def _send_discussion(
+        self,
+        project: str,
+        index: int,
+        comment: GitLabReviewCommentDTO,
+        shas: tuple[str, str, str],
+    ) -> None:
+        base_sha, head_sha, start_sha = shas
+
+        position: dict[str, object] = {
+            "position_type": "text",
+            "base_sha": base_sha,
+            "head_sha": head_sha,
+            "start_sha": start_sha,
+            # GitLab requires both paths; a comment only ever names the file as it
+            # exists after the change, which is also the common case for renames.
+            "new_path": comment.path,
+            "old_path": comment.path,
+        }
+
+        if comment.new_line is not None:
+            position["new_line"] = comment.new_line
+
+        if comment.old_line is not None:
+            position["old_line"] = comment.old_line
+
+        await self.http_client.post(
+            url=self._api_url(f"projects/{project}/merge_requests/{index}/discussions"),
+            headers=self._get_headers(),
+            payload={"body": comment.body, "position": position},
+        )
+
+    async def send_inline(self, sha: str, repo_owner: str, review: ReviewResponseDTO, index: int) -> None:
+        project = self._project(repo_owner)
+        shas: tuple[str, str, str] | None = None
+
+        for comment in review.comments:
+            if not isinstance(comment, GitLabReviewCommentDTO):
+                raise UnsupportedReviewCommentException(
+                    f"{type(comment).__name__} comments cannot be published to GitLab"
+                )
+
+            if shas is None:
+                # Fetched once per review, and only when there is something to post.
+                shas = await self._get_position_shas(project, index)
+
+            await self._send_discussion(project, index, comment, shas)
+
+        await self.send_comment(repo_owner, review.general_comment, index)

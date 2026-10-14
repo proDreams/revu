@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
@@ -13,9 +14,10 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     GiteaReviewResponse,
     GitHubReviewComment,
     GithubReviewResponse,
+    GitLabReviewComment,
 )
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
+    BitbucketReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -109,7 +111,7 @@ async def test_bitbucket_inline_response():
     assert result.general_comment == "test comment"
 
     comment = result.comments[0]
-    assert isinstance(comment, BitBucketReviewCommentDTO)
+    assert isinstance(comment, BitbucketReviewCommentDTO)
     assert comment.lineType == "ADDED"
     assert comment.line == 42
 
@@ -153,3 +155,23 @@ async def test_without_a_system_prompt_the_builtin_prompt_is_used():
     instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
     assert instructions.lstrip().startswith("Ты — опытный инженер-программист")
     assert "Ты — опытный инженер-программист" in instructions
+
+
+def test_a_gitlab_comment_needs_a_line():
+    """A GitLab note with neither side cannot be positioned at all."""
+    with pytest.raises(ValidationError):
+        GitLabReviewComment(path="app.py", body="nowhere")
+
+
+def test_a_gitlab_comment_treats_a_blank_line_as_absent():
+    """Providers without a schema often answer an inapplicable line as ""."""
+    comment = GitLabReviewComment(path="app.py", body="b", new_line="", old_line="5")
+
+    assert comment.new_line is None
+    assert comment.old_line == 5
+
+
+def test_a_gitlab_comment_accepts_both_sides():
+    comment = GitLabReviewComment(path="app.py", body="b", new_line=7, old_line=6)
+
+    assert (comment.old_line, comment.new_line) == (6, 7)

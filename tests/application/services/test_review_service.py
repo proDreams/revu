@@ -247,13 +247,13 @@ def test_annotate_diff_passes_empty_text_through():
 
 async def test_unanchored_comments_are_dropped_before_sending(service, ai_port, git_port, caplog):
     """One hallucinated line must not cost the whole review."""
-    from revu.domain.entities.dto.ai_provider_dto import GithubReviewCommentDTO
+    from revu.domain.entities.dto.ai_provider_dto import GitHubReviewCommentDTO
 
     ai_port.get_inline_response.return_value = ReviewResponseDTO(
         general_comment="inline review",
         comments=[
-            GithubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="kept"),
-            GithubReviewCommentDTO(path="app.py", line=999, side="RIGHT", body="hallucinated"),
+            GitHubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="kept"),
+            GitHubReviewCommentDTO(path="app.py", line=999, side="RIGHT", body="hallucinated"),
         ],
     )
     tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)

@@ -10,6 +10,7 @@ from revu.application.entities.default_prompts import (
     DIFF_PROMPT,
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
+    GITLAB_INLINE_PROMPT,
 )
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
@@ -19,6 +20,7 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     BitbucketReviewResponse,
     GiteaReviewResponse,
     GithubReviewResponse,
+    GitlabReviewResponse,
     InlineReviewResponse,
 )
 from revu.domain.entities.dto.review_task_dto import ReviewTask
@@ -44,6 +46,8 @@ class BaseAIPort(AIProviderProtocol):
                 return GITHUB_INLINE_PROMPT
             case GitProviderEnum.GITEA:
                 return GITEA_INLINE_PROMPT
+            case GitProviderEnum.GITLAB:
+                return GITLAB_INLINE_PROMPT
             case GitProviderEnum.BITBUCKET:
                 return BITBUCKET_INLINE_PROMPT
             case _:
@@ -86,6 +90,8 @@ class BaseAIPort(AIProviderProtocol):
                 return GithubReviewResponse
             case GitProviderEnum.GITEA:
                 return GiteaReviewResponse
+            case GitProviderEnum.GITLAB:
+                return GitlabReviewResponse
             case GitProviderEnum.BITBUCKET:
                 return BitbucketReviewResponse
             case _:

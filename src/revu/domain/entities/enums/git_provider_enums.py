@@ -10,4 +10,5 @@ class GitProviderEnum(StrEnum):
 
     GITHUB = "github"
     GITEA = "gitea"
+    GITLAB = "gitlab"
     BITBUCKET = "bitbucket"

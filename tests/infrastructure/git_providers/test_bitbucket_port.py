@@ -3,8 +3,8 @@ from unittest.mock import ANY, AsyncMock
 import pytest
 
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
-    GithubReviewCommentDTO,
+    BitbucketReviewCommentDTO,
+    GitHubReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -135,7 +135,7 @@ async def test_send_inline_anchors_on_comment_line():
     http_client = AsyncMock(post=AsyncMock())
     review = ReviewResponseDTO(
         general_comment="overall feedback",
-        comments=[BitBucketReviewCommentDTO(path="app.py", lineType="ADDED", body="fix this", line=17)],
+        comments=[BitbucketReviewCommentDTO(path="app.py", lineType="ADDED", body="fix this", line=17)],
     )
 
     await _port(http_client).send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
@@ -154,7 +154,7 @@ async def test_send_inline_rejects_foreign_comment_types():
     http_client = AsyncMock(post=AsyncMock())
     review = ReviewResponseDTO(
         general_comment="overall feedback",
-        comments=[GithubReviewCommentDTO(path="app.py", line=1, body="fix this")],
+        comments=[GitHubReviewCommentDTO(path="app.py", line=1, body="fix this")],
     )
 
     with pytest.raises(UnsupportedReviewCommentException, match="cannot be published to Bitbucket"):

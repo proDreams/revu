@@ -48,7 +48,7 @@ class GithubPort(GitProviderProtocol):
 
     async def send_inline(self, sha: str, repo_owner: str, review: ReviewResponseDTO, index: int) -> None:
         # GitHub anchors inline comments by file line number and side, which is
-        # what GithubReviewCommentDTO carries; `position` is deprecated there.
+        # what GitHubReviewCommentDTO carries; `position` is deprecated there.
         data = {
             "commit_id": sha,
             "body": review.general_comment,

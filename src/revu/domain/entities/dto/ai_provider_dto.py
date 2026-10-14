@@ -7,7 +7,7 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 
 
 @dataclass
-class GithubReviewCommentDTO:
+class GitHubReviewCommentDTO:
     """A GitHub inline comment: ``line`` is a file line number, ``side`` its version."""
 
     path: str
@@ -25,7 +25,7 @@ class GiteaReviewCommentDTO:
 
 
 @dataclass
-class BitBucketReviewCommentDTO:
+class BitbucketReviewCommentDTO:
     """A Bitbucket anchor: ``line`` is a file line number qualified by ``lineType``."""
 
     path: str
@@ -35,9 +35,24 @@ class BitBucketReviewCommentDTO:
 
 
 @dataclass
+class GitLabReviewCommentDTO:
+    """A GitLab diff note: the lines it spans, ``None`` for the side it omits.
+
+    GitLab anchors a note with the line number on each side of the diff, so the
+    host needs both the old and the new line for a context line, and only one of
+    them for an added or removed line.
+    """
+
+    path: str
+    body: str
+    new_line: int | None = None
+    old_line: int | None = None
+
+
+@dataclass
 class ReviewResponseDTO:
     general_comment: str
-    comments: list[GithubReviewCommentDTO | GiteaReviewCommentDTO | BitBucketReviewCommentDTO]
+    comments: list[GitHubReviewCommentDTO | GiteaReviewCommentDTO | GitLabReviewCommentDTO | BitbucketReviewCommentDTO]
 
     @classmethod
     def from_request(
@@ -51,17 +66,22 @@ class ReviewResponseDTO:
             case GitProviderEnum.GITHUB:
                 return cls(
                     general_comment=general_comment,
-                    comments=[GithubReviewCommentDTO(**comment) for comment in comments],
+                    comments=[GitHubReviewCommentDTO(**comment) for comment in comments],
                 )
             case GitProviderEnum.GITEA:
                 return cls(
                     general_comment=general_comment,
                     comments=[GiteaReviewCommentDTO(**comment) for comment in comments],
                 )
+            case GitProviderEnum.GITLAB:
+                return cls(
+                    general_comment=general_comment,
+                    comments=[GitLabReviewCommentDTO(**comment) for comment in comments],
+                )
             case GitProviderEnum.BITBUCKET:
                 return cls(
                     general_comment=general_comment,
-                    comments=[BitBucketReviewCommentDTO(**comment) for comment in comments],
+                    comments=[BitbucketReviewCommentDTO(**comment) for comment in comments],
                 )
             case _:
                 raise UnknownGitProviderException("Unknown Git Provider")

@@ -1,9 +1,10 @@
 import pytest
 
 from revu.domain.entities.dto.ai_provider_dto import (
-    BitBucketReviewCommentDTO,
+    BitbucketReviewCommentDTO,
     GiteaReviewCommentDTO,
-    GithubReviewCommentDTO,
+    GitHubReviewCommentDTO,
+    GitLabReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -12,6 +13,27 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+def test_create_gitlab_response_ai_provider_dto():
+    comments = [
+        {"path": "test path", "new_line": 10, "body": "added"},
+        {"path": "test path", "old_line": 4, "body": "removed"},
+        {"path": "test path", "new_line": 7, "old_line": 6, "body": "context"},
+    ]
+
+    dto = ReviewResponseDTO.from_request(
+        general_comment="c",
+        comments=comments,
+        git_host=GitProviderEnum.GITLAB,
+    )
+
+    assert all(isinstance(comment, GitLabReviewCommentDTO) for comment in dto.comments)
+    assert dto.comments[0].new_line == 10
+    assert dto.comments[0].old_line is None
+    assert dto.comments[1].new_line is None
+    assert dto.comments[2].new_line == 7
+    assert dto.comments[2].old_line == 6
 
 
 def test_create_github_response_ai_provider_dto():
@@ -28,7 +50,7 @@ def test_create_github_response_ai_provider_dto():
     )
 
     assert isinstance(dto, ReviewResponseDTO)
-    assert isinstance(dto.comments[0], GithubReviewCommentDTO)
+    assert isinstance(dto.comments[0], GitHubReviewCommentDTO)
     assert dto.general_comment == general_comment
     assert dto.comments[0].line == 10
     assert dto.comments[1].side == "LEFT"
@@ -79,7 +101,7 @@ def test_create_bitbucket_response_ai_provider_dto():
     )
 
     assert isinstance(dto, ReviewResponseDTO)
-    assert isinstance(dto.comments[0], BitBucketReviewCommentDTO)
+    assert isinstance(dto.comments[0], BitbucketReviewCommentDTO)
     assert dto.general_comment == general_comment
     assert dto.comments[1].path == "test path 2"
     assert dto.comments[0].lineType == "ADDED"

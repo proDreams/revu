@@ -4,7 +4,7 @@ from unittest.mock import ANY, AsyncMock
 import pytest
 
 from revu.domain.entities.dto.ai_provider_dto import (
-    GithubReviewCommentDTO,
+    GitHubReviewCommentDTO,
     ReviewResponseDTO,
 )
 from revu.infrastructure.git_providers.github.github_port import GithubPort
@@ -65,8 +65,8 @@ async def test_send_inline_sends_line_and_side():
     review = ReviewResponseDTO(
         general_comment="test review",
         comments=[
-            GithubReviewCommentDTO(path="app.py", line=10, side="RIGHT", body="first"),
-            GithubReviewCommentDTO(path="app.py", line=4, side="LEFT", body="second"),
+            GitHubReviewCommentDTO(path="app.py", line=10, side="RIGHT", body="first"),
+            GitHubReviewCommentDTO(path="app.py", line=4, side="LEFT", body="second"),
         ],
     )
 
