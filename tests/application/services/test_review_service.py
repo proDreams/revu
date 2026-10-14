@@ -9,8 +9,15 @@ from revu.application.entities.exceptions.review_service_exceptions import (
 )
 from revu.application.entities.tenant import GitConnection, TenantContext
 from revu.application.services.review_service import ReviewService
-from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.dto.ai_provider_dto import (
+    PreviousFindingDTO,
+    ReviewResponseDTO,
+)
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.dto.review_context_dto import (
+    PreviousCommentDTO,
+    ReviewContextDTO,
+)
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 from tests.conftest import make_connection
@@ -265,3 +272,141 @@ async def test_unanchored_comments_are_dropped_before_sending(service, ai_port, 
     assert [comment.body for comment in sent.comments] == ["kept"]
     assert sent.general_comment == "inline review"
     assert "dropped 1 of 2 inline comments for connection gh-main" in caplog.text
+
+
+FINDING = PreviousCommentDTO(author="revu-bot", body="импорты лучше построчно", is_revu=True, path="app.py", line=1)
+DISCUSSION = PreviousCommentDTO(author="ivan", body="не трогаем")
+
+
+def _context(*comments: PreviousCommentDTO) -> ReviewContextDTO:
+    return ReviewContextDTO(comments=comments)
+
+
+async def test_the_previous_review_reaches_the_ai_port(service, ai_port, git_port):
+    """This is the whole point: a follow-up has to see what was said before."""
+    git_port.fetch_review_context.return_value = _context(FINDING, DISCUSSION)
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    task = ai_port.get_inline_response.await_args.args[0]
+    assert task.previous_review is not None
+    assert task.previous_review.findings == (FINDING,)
+    assert task.previous_review.discussion == (DISCUSSION,)
+
+
+async def test_a_first_review_carries_no_context(service, ai_port, git_port):
+    git_port.fetch_review_context.return_value = None
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert ai_port.get_inline_response.await_args.args[0].previous_review is None
+
+
+async def test_a_context_lookup_that_fails_does_not_lose_the_review(service, ai_port, git_port, caplog):
+    """An older token without the right scope costs the context, not the review."""
+    git_port.fetch_review_context.side_effect = RuntimeError("403 Forbidden")
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    with caplog.at_level("WARNING"):
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert ai_port.get_inline_response.await_args.args[0].previous_review is None
+    assert "reviewing without them" in caplog.text
+    git_port.send_inline.assert_awaited_once()
+
+
+async def test_the_discussion_is_held_back_when_a_connection_asks_for_it(service, ai_port, git_port):
+    """ReVu's own output is not new data; other people's comments can be."""
+    git_port.fetch_review_context.return_value = _context(FINDING, DISCUSSION)
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE, include_pr_discussion=False)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    context = ai_port.get_inline_response.await_args.args[0].previous_review
+    assert context is not None
+    assert context.findings == (FINDING,)
+    assert context.discussion == ()
+
+
+async def test_the_summary_reports_how_many_findings_were_fixed(service, ai_port, git_port):
+    git_port.fetch_review_context.return_value = _context(
+        FINDING,
+        PreviousCommentDTO(author="revu-bot", body="второе", is_revu=True),
+    )
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[],
+        previous_findings=[
+            PreviousFindingDTO(summary="импорты", status="fixed"),
+            PreviousFindingDTO(summary="второе", status="remaining"),
+        ],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    published = git_port.send_inline.await_args.kwargs["review"]
+    assert published.general_comment.startswith("📊 Из прошлых замечаний исправлено: 1 из 2.")
+    assert "Осталось: 1." in published.general_comment
+    assert published.general_comment.endswith("итог")
+
+
+async def test_the_summary_says_when_everything_is_closed(service, ai_port, git_port):
+    git_port.fetch_review_context.return_value = _context(FINDING)
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[],
+        previous_findings=[PreviousFindingDTO(summary="импорты", status="fixed")],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert "Все замечания закрыты." in git_port.send_inline.await_args.kwargs["review"].general_comment
+
+
+async def test_the_summary_never_claims_more_fixes_than_findings(service, ai_port, git_port):
+    git_port.fetch_review_context.return_value = _context(FINDING)
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[],
+        previous_findings=[PreviousFindingDTO(summary="a", status="fixed") for _ in range(5)],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert "исправлено: 1 из 1." in git_port.send_inline.await_args.kwargs["review"].general_comment
+
+
+async def test_no_summary_without_earlier_findings(service, ai_port, git_port):
+    git_port.fetch_review_context.return_value = _context(DISCUSSION)
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert git_port.send_inline.await_args.kwargs["review"].general_comment == "inline review"
+
+
+async def test_no_summary_when_the_model_reported_nothing(service, ai_port, git_port, caplog):
+    """A claim of zero fixes would be worse than no line at all."""
+    git_port.fetch_review_context.return_value = _context(FINDING)
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    with caplog.at_level("WARNING"):
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert git_port.send_inline.await_args.kwargs["review"].general_comment == "inline review"
+    assert "omitting the progress line" in caplog.text
+
+
+async def test_comment_mode_publishes_the_model_text_as_is(service, ai_port, git_port):
+    """In comment mode the prompt asks the model for the progress line itself."""
+    git_port.fetch_review_context.return_value = _context(FINDING)
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.COMMENT)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert git_port.send_comment.await_args.kwargs["review"] == "comment review"

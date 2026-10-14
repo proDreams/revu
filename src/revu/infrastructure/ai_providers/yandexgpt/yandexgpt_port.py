@@ -42,4 +42,5 @@ class YandexGPTPort(BaseAIPort):
             general_comment=payload["general_comment"],
             comments=payload["comments"],
             git_host=task.git_host,
+            previous_findings=payload["previous_findings"],
         )

@@ -15,6 +15,7 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     GitHubReviewComment,
     GithubReviewResponse,
     GitLabReviewComment,
+    PreviousFinding,
 )
 from revu.domain.entities.dto.ai_provider_dto import (
     BitbucketReviewCommentDTO,
@@ -175,3 +176,44 @@ def test_a_gitlab_comment_accepts_both_sides():
     comment = GitLabReviewComment(path="app.py", body="b", new_line=7, old_line=6)
 
     assert (comment.old_line, comment.new_line) == (6, 7)
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "expected"),
+    [
+        ("fixed", "fixed"),
+        ("FIXED", "fixed"),
+        ("исправлено", "fixed"),
+        ("resolved", "fixed"),
+        ("remaining", "remaining"),
+        ("исправлю потом", "remaining"),
+        (None, "remaining"),
+    ],
+)
+def test_a_finding_status_is_normalised(raw_status, expected):
+    """Models answer in their own words; only an explicit fix counts as one."""
+    finding = PreviousFinding(summary="s", status=raw_status)
+
+    assert finding.status.value == expected
+
+
+def test_a_finding_defaults_to_remaining():
+    assert PreviousFinding(summary="s").status.value == "remaining"
+
+
+def test_a_review_response_carries_the_finding_statuses():
+    response = GithubReviewResponse.model_validate(
+        {
+            "general_comment": "c",
+            "previous_findings": [{"summary": "a", "status": "fixed"}],
+            "comments": [],
+        }
+    )
+
+    assert response.previous_findings[0].status.value == "fixed"
+
+
+def test_a_review_response_without_findings_is_fine():
+    response = GithubReviewResponse.model_validate({"general_comment": "c", "comments": []})
+
+    assert response.previous_findings == []

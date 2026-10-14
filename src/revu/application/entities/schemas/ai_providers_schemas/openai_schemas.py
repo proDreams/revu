@@ -2,6 +2,11 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from revu.application.entities.enums.finding_status_enums import (
+    FindingStatusEnum,
+    to_finding_status,
+)
+
 
 class GitHubReviewComment(BaseModel):
     """An inline GitHub comment anchored by file line number and side.
@@ -75,8 +80,27 @@ class GitLabReviewComment(BaseModel):
         return self
 
 
+class PreviousFinding(BaseModel):
+    """What became of one finding from an earlier review."""
+
+    summary: str
+    status: FindingStatusEnum = FindingStatusEnum.REMAINING
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: object) -> object:
+        """Providers without a schema answer in their own words.
+
+        Anything unrecognised counts as ``remaining``: a review must never claim a
+        fix that did not happen.
+        """
+        return to_finding_status(value)
+
+
 class ReviewResponse(BaseModel):
     general_comment: str
+    # Empty on a first review; a re-review reports the fate of every earlier finding.
+    previous_findings: list[PreviousFinding] = []
 
 
 class GithubReviewResponse(ReviewResponse):

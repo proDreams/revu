@@ -245,3 +245,67 @@ async def test_a_comment_of_another_host_is_rejected():
         await _port(http_client).send_inline(sha="x", repo_owner="group/project", review=review, index=11)
 
     http_client.post.assert_not_awaited()
+
+
+BOT = {"username": "revu-bot"}
+SYSTEM_NOTE = {"body": "changed the description", "system": True, "author": BOT, "created_at": "2026-01-01T00:00:00Z"}
+OUR_NOTE = {
+    "body": "импорты лучше построчно",
+    "author": BOT,
+    "resolved": True,
+    "created_at": "2026-01-02T00:00:00Z",
+    "position": {"new_path": "app.py", "new_line": 12},
+}
+THEIR_NOTE = {
+    "body": "не трогаем этот модуль",
+    "author": {"username": "ivan"},
+    "created_at": "2026-01-03T00:00:00Z",
+    "position": {"old_path": "legacy.py", "old_line": 4},
+}
+
+
+def _context_client() -> AsyncMock:
+    http_client = AsyncMock()
+    empty = {"body": "   ", "author": BOT, "created_at": "2026-01-04T00:00:00Z"}
+    http_client.get.side_effect = [BOT, [SYSTEM_NOTE, empty, OUR_NOTE, THEIR_NOTE]]
+
+    return http_client
+
+
+async def test_fetch_review_context_reads_notes_and_skips_system_ones():
+    http_client = _context_client()
+
+    context = await _port(http_client).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    assert [comment.body for comment in context.comments] == [
+        "импорты лучше построчно",
+        "не трогаем этот модуль",
+    ]
+    assert [call.kwargs["url"] for call in http_client.get.await_args_list][0] == (f"{GITLAB_URL}/api/v4/user")
+    assert "sort=asc" in http_client.get.await_args_list[1].kwargs["url"]
+
+
+async def test_fetch_review_context_marks_revu_notes_and_their_resolution():
+    context = await _port(_context_client()).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    assert context.findings[0].is_revu is True
+    assert context.findings[0].resolved is True
+    assert context.discussion[0].is_revu is False
+
+
+async def test_fetch_review_context_keeps_the_diff_position():
+    context = await _port(_context_client()).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    assert (context.findings[0].path, context.findings[0].line) == ("app.py", 12)
+    # A note on a removed line only carries the old one.
+    assert (context.discussion[0].path, context.discussion[0].line) == ("legacy.py", 4)
+
+
+async def test_fetch_review_context_is_none_without_notes():
+    http_client = AsyncMock()
+    http_client.get.side_effect = [BOT, []]
+
+    assert await _port(http_client).fetch_review_context(repo="group/project", index=11) is None

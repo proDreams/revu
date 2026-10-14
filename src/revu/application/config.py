@@ -26,6 +26,7 @@ from revu.application.entities.config import (
     DEFAULT_HTTP_ATTEMPTS,
     DEFAULT_HTTP_BACKOFF,
     DEFAULT_HTTP_TIMEOUT,
+    DEFAULT_INCLUDE_PR_DISCUSSION,
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_DIR,
     DEFAULT_LOG_FILE,
@@ -175,6 +176,7 @@ def _parse_git_connections(
     default_system_prompt: str | None,
     default_max_concurrent: int,
     default_notify_on_failure: bool,
+    default_include_pr_discussion: bool,
 ) -> dict[str, GitConnectionConfig]:
     section = raw.get("GIT_PROVIDERS")
     if not section:
@@ -224,6 +226,7 @@ def _parse_git_connections(
             system_prompt=_text(body, path, "SYSTEM_PROMPT", required=False) or default_system_prompt,
             max_concurrent_reviews=_positive_int(body, path, "MAX_CONCURRENT_REVIEWS", default_max_concurrent),
             notify_on_failure=_boolean(body, path, "NOTIFY_ON_FAILURE", default_notify_on_failure),
+            include_pr_discussion=_boolean(body, path, "INCLUDE_PR_DISCUSSION", default_include_pr_discussion),
         )
 
     return connections
@@ -263,6 +266,7 @@ def _load_settings(raw: Mapping[str, Any]) -> Settings:
         default_system_prompt=_text(raw, "config", "SYSTEM_PROMPT", required=False),
         default_max_concurrent=int(raw.get("MAX_CONCURRENT_REVIEWS") or DEFAULT_MAX_CONCURRENT_REVIEWS),
         default_notify_on_failure=_boolean(raw, "config", "NOTIFY_ON_FAILURE", DEFAULT_NOTIFY_ON_FAILURE),
+        default_include_pr_discussion=_boolean(raw, "config", "INCLUDE_PR_DISCUSSION", DEFAULT_INCLUDE_PR_DISCUSSION),
     )
 
     return Settings(

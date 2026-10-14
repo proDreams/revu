@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-14
+
+### Added
+
+- **A repeated review now builds on the first one.** Before reviewing, ReVu reads
+  the comments the pull request already carries — its own findings and the
+  discussion around them — and a follow-up prompt works from them instead of
+  starting over:
+    - findings that were addressed are not raised again;
+    - findings that still hold are not posted as duplicate inline comments, they
+      are reported in the summary;
+    - inline comments are added only for problems in the new changes.
+- The summary of a re-review opens with the progress
+  (`📊 Из прошлых замечаний исправлено: 3 из 5. Осталось: 2.`). The total is
+  ReVu's own count of earlier findings, so a model that reports fewer of them
+  cannot shrink it, and a model that reports none gets no line at all rather than
+  a claim of zero fixes.
+- `INCLUDE_PR_DISCUSSION` (default `true`, overridable per connection) decides
+  whether other people's comments are sent to the AI provider as context. ReVu's
+  own findings are always included, because they are the model's own earlier
+  output rather than new data leaving the network.
+- Each port reads the history the way its host exposes it: GitHub and Gitea read
+  the timeline, the inline comments and the review bodies (where an inline summary
+  goes); GitLab reads the notes, skipping system ones and keeping the resolution
+  state; Bitbucket Data Center reads the comments with their anchors and flattens
+  the replies.
+
+### Changed
+
+- The output schema of both review modes now carries `previous_findings`, empty
+  on a first review. A provider answer that omits it is treated as "nothing
+  reported" instead of as "nothing was fixed".
+- A pull request without a description no longer reaches the model as the literal
+  `None`.
+
 ## [2.1.0] - 2026-10-14
 
 ### Added
@@ -112,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.2.0]: https://github.com/proDreams/revu/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/proDreams/revu/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/proDreams/revu/compare/1.7.0...2.0.0
 

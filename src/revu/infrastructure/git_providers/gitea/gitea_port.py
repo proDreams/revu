@@ -4,14 +4,21 @@ from urllib.parse import urljoin
 from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
+from revu.infrastructure.git_providers.github_compatible import (
+    GithubCompatibleComments,
+)
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
-class GiteaPort(GitProviderProtocol):
+class GiteaPort(GithubCompatibleComments, GitProviderProtocol):
+    #: Gitea mirrors the GitHub API, one prefix deeper.
+    API_PREFIX = "api/v1/"
+
     def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
         self.http_client = http_client
         self.config = config
         self.gitea_token = config.user_token
+        self._login: str | None = None
         self.gitea_url = config.resolved_base_url
 
     def _get_headers(self) -> dict[str, str]:

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from revu.domain.entities.dto.review_context_dto import ReviewContextDTO
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 
 
@@ -17,3 +18,6 @@ class ReviewTask:
     pr_title: str
     pr_body: str | None = None
     system_prompt: str | None = None
+    #: Comments the pull request already has. Present on a re-review, which is what
+    #: switches the prompt from a first look to a follow-up.
+    previous_review: ReviewContextDTO | None = None

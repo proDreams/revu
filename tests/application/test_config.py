@@ -336,3 +336,29 @@ def test_a_non_boolean_flag_is_rejected():
         load_settings(raw)
 
     assert "NOTIFY_ON_FAILURE must be a boolean" in str(exc_info.value)
+
+
+def test_the_pull_request_discussion_is_included_by_default():
+    assert load_settings(make_raw_settings()).git_connections["gh-main"].include_pr_discussion is True
+
+
+def test_a_connection_can_keep_the_discussion_local():
+    """Other people's comments go to the AI provider; a connection may refuse."""
+    raw = _with_connection(INCLUDE_PR_DISCUSSION=False)
+
+    assert load_settings(raw).git_connections["gh-main"].include_pr_discussion is False
+
+
+def test_the_discussion_flag_can_be_turned_off_globally():
+    raw = make_raw_settings(INCLUDE_PR_DISCUSSION=False)
+
+    assert load_settings(raw).git_connections["gh-main"].include_pr_discussion is False
+
+
+def test_a_non_boolean_discussion_flag_is_rejected():
+    raw = _with_connection(INCLUDE_PR_DISCUSSION="sometimes")
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_settings(raw)
+
+    assert "INCLUDE_PR_DISCUSSION must be a boolean" in str(exc_info.value)

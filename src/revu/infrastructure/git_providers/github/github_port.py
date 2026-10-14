@@ -4,16 +4,20 @@ from urllib.parse import urljoin
 from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
+from revu.infrastructure.git_providers.github_compatible import (
+    GithubCompatibleComments,
+)
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
-class GithubPort(GitProviderProtocol):
+class GithubPort(GithubCompatibleComments, GitProviderProtocol):
     DEFAULT_API_URL = "https://api.github.com"
 
     def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
         self.http_client = http_client
         self.config = config
         self.github_token = config.user_token
+        self._login: str | None = None
         # GitHub Enterprise Server serves its REST API under `/api/v3`, so a
         # self-hosted instance has to be configured as
         # `https://ghe.example.com/api/v3`. When unset, github.com is used.

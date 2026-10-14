@@ -161,3 +161,118 @@ async def test_send_inline_rejects_foreign_comment_types():
         await _port(http_client).send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
 
     http_client.post.assert_not_awaited()
+
+
+REVIEWER_COMMENT = {
+    "author": {"name": "revu-bot", "slug": "revu-bot"},
+    "text": "импорты лучше построчно",
+    "state": "OPEN",
+    "createdDate": 1767225600000,
+    "anchor": {"path": {"toString": "app.py"}, "line": 12, "lineType": "ADDED"},
+}
+REPLY = {
+    "author": {"name": "ivan"},
+    "text": "поправил",
+    "state": "RESOLVED",
+    "createdDate": 1767312000000,
+}
+
+
+def _comments_client(values: list[dict], *, is_last: bool = True, **page_extra) -> AsyncMock:
+    http_client = AsyncMock()
+    http_client.get.return_value = {"values": values, "isLastPage": is_last, **page_extra}
+
+    return http_client
+
+
+async def test_fetch_review_context_reads_comments_with_their_anchor():
+    http_client = _comments_client([REVIEWER_COMMENT])
+
+    context = await _port(http_client, reviewer="revu-bot").fetch_review_context(repo="MYPROJ/repo", index=7)
+
+    assert context is not None
+    comment = context.comments[0]
+    assert (comment.author, comment.body) == ("revu-bot", "импорты лучше построчно")
+    assert (comment.path, comment.line) == ("app.py", 12)
+    assert comment.is_revu is True
+    assert "comments?limit=" in http_client.get.await_args.kwargs["url"]
+
+
+async def test_fetch_review_context_flattens_replies():
+    """Bitbucket nests a thread's replies under the comment that started it."""
+    thread = {**REVIEWER_COMMENT, "comments": [REPLY]}
+
+    context = await _port(_comments_client([thread]), reviewer="revu-bot").fetch_review_context(
+        repo="MYPROJ/repo", index=7
+    )
+
+    assert context is not None
+    assert [comment.body for comment in context.comments] == [
+        "импорты лучше построчно",
+        "поправил",
+    ]
+    assert context.discussion[0].resolved is True
+
+
+async def test_fetch_review_context_can_recognise_its_own_comments_by_permission():
+    """Without a configured reviewer, the edit permission is the only signal left."""
+    mine = {**REVIEWER_COMMENT, "author": {"name": "someone"}, "permittedOperations": {"canEdit": True}}
+    theirs = {**REVIEWER_COMMENT, "author": {"name": "ivan"}, "permittedOperations": {"canEdit": False}}
+
+    context = await _port(_comments_client([mine, theirs])).fetch_review_context(repo="MYPROJ/repo", index=7)
+
+    assert context is not None
+    assert [comment.is_revu for comment in context.comments] == [True, False]
+
+
+async def test_fetch_review_context_follows_pages():
+    http_client = AsyncMock()
+    http_client.get.side_effect = [
+        {"values": [REVIEWER_COMMENT], "isLastPage": False, "nextPageStart": 1},
+        {"values": [{**REVIEWER_COMMENT, "text": "второй", "createdDate": 1767398400000}], "isLastPage": True},
+    ]
+
+    context = await _port(http_client, reviewer="revu-bot").fetch_review_context(repo="MYPROJ/repo", index=7)
+
+    assert context is not None
+    assert [comment.body for comment in context.comments] == ["импорты лучше построчно", "второй"]
+    assert http_client.get.await_count == 2
+    assert "start=1" in http_client.get.await_args.kwargs["url"]
+
+
+async def test_fetch_review_context_stops_on_an_unexpected_payload():
+    http_client = AsyncMock()
+    http_client.get.return_value = ["nonsense"]
+
+    assert await _port(http_client, reviewer="revu-bot").fetch_review_context(repo="MYPROJ/repo", index=7) is None
+
+
+async def test_fetch_review_context_skips_textless_comments():
+    http_client = _comments_client([{**REVIEWER_COMMENT, "text": "  "}])
+
+    assert await _port(http_client, reviewer="revu-bot").fetch_review_context(repo="MYPROJ/repo", index=7) is None
+
+
+@pytest.mark.parametrize("author", [None, {}, {"displayName": 42}, "not-a-dict"])
+async def test_fetch_review_context_survives_a_comment_without_a_usable_author(author):
+    http_client = _comments_client([{"text": "кто-то написал", "author": author, "createdDate": 1767225600000}, "x"])
+
+    context = await _port(http_client, reviewer="revu-bot").fetch_review_context(repo="MYPROJ/repo", index=7)
+
+    assert context is not None
+    assert [comment.author for comment in context.comments] == [""]
+    assert context.findings == ()
+
+
+async def test_fetch_review_context_stops_at_the_reply_depth_limit():
+    """A malformed payload must not make the flattening recursive forever."""
+    nested: dict = {"text": "reply", "author": {"name": "ivan"}, "createdDate": 1767225600000}
+    for _ in range(8):
+        nested = {"text": "parent", "author": {"name": "ivan"}, "createdDate": 1767225600000, "comments": [nested]}
+
+    context = await _port(_comments_client([nested]), reviewer="revu-bot").fetch_review_context(
+        repo="MYPROJ/repo", index=7
+    )
+
+    assert context is not None
+    assert len(context.comments) == 6  # the root plus five levels of replies

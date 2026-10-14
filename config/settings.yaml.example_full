@@ -18,6 +18,11 @@ MAX_CONCURRENT_REVIEWS: 3
 # into the comment; the message and traceback stay in the logs. Set to false if a
 # systemic failure (a revoked token, say) would produce too much noise.
 NOTIFY_ON_FAILURE: true
+# INCLUDE_PR_DISCUSSION — send other people's pull request comments to the AI
+# provider as context for a repeated review. ReVu's own earlier findings are
+# always included, because they are its own output rather than new data. Set to
+# false when the discussion in a repository must not leave your network.
+INCLUDE_PR_DISCUSSION: true
 
 # ── AI profiles ──────────────────────────────────────────────────────────────
 # Named AI settings. Connections without an explicit AI_PROVIDER use
@@ -78,6 +83,7 @@ GIT_PROVIDERS:
     REVIEW_MODE: "comment"
     MAX_CONCURRENT_REVIEWS: 1
     SYSTEM_PROMPT: "This repository is a legacy service: mention backwards compatibility."
+    INCLUDE_PR_DISCUSSION: false
 
   # https://<your-revu-host>/webhooks/gl-internal
   gl-internal:

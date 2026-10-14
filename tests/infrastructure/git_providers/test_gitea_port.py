@@ -68,3 +68,29 @@ async def test_send_inline():
         "comments": [asdict(comment) for comment in review.comments],
     }
     http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload=payload)
+
+
+BOT = {"login": "revu-bot"}
+
+
+async def test_fetch_review_context_uses_the_gitea_api_prefix():
+    http_client = AsyncMock()
+    http_client.get.side_effect = [BOT, [], [], []]
+
+    await _port(http_client).fetch_review_context(repo="owner/repo", index=7)
+
+    urls = [call.kwargs["url"] for call in http_client.get.await_args_list]
+    assert urls[0] == "https://gitea.internal/api/v1/user"
+    assert all("api/v1/repos/owner/repo/" in url for url in urls[1:])
+
+
+async def test_fetch_review_context_marks_revu_comments():
+    ours = {"user": BOT, "body": "поправь", "path": "app.py", "line": 3, "created_at": "2026-01-02T00:00:00Z"}
+    theirs = {"user": {"login": "ivan"}, "body": "ок", "created_at": "2026-01-01T00:00:00Z"}
+    http_client = AsyncMock()
+    http_client.get.side_effect = [BOT, [theirs], [ours], []]
+
+    context = await _port(http_client).fetch_review_context(repo="owner/repo", index=7)
+
+    assert context is not None
+    assert [comment.is_revu for comment in context.comments] == [False, True]

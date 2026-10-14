@@ -45,6 +45,10 @@ DEFAULT_MAX_CONCURRENT_REVIEWS = 3
 # Telling the pull request that a review failed is the default: a bot that stays
 # silent looks like it worked.
 DEFAULT_NOTIFY_ON_FAILURE = True
+# Comments other people wrote are sent to the AI provider as context for a
+# re-review. On by default, because that is what makes a follow-up useful; turn it
+# off on a connection whose discussion must not leave the network.
+DEFAULT_INCLUDE_PR_DISCUSSION = True
 DEFAULT_HTTP_TIMEOUT = 30.0
 DEFAULT_HTTP_ATTEMPTS = 3
 DEFAULT_HTTP_BACKOFF = 0.5
@@ -112,6 +116,7 @@ class GitConnectionConfig:
     review_mode: ReviewModeEnum
     max_concurrent_reviews: int
     notify_on_failure: bool = DEFAULT_NOTIFY_ON_FAILURE
+    include_pr_discussion: bool = DEFAULT_INCLUDE_PR_DISCUSSION
     base_url: str | None = None
     reviewer: str | None = None
     system_prompt: str | None = None

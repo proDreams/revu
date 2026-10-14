@@ -9,7 +9,9 @@ from revu.application.entities.exceptions.review_service_exceptions import (
 )
 from revu.application.entities.tenant import TenantContext
 from revu.application.services.diff_anchors import DiffAnchors, drop_unanchored_comments
+from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.dto.review_context_dto import ReviewContextDTO
 from revu.domain.entities.dto.review_task_dto import ReviewTask
 
 logger = get_logger(name=__name__)
@@ -34,11 +36,71 @@ class ReviewService:
         async with tenant.review_slots:
             await self._run_review(tenant=tenant, webhook_data=webhook_data)
 
+    async def _fetch_review_context(
+        self,
+        tenant: TenantContext,
+        webhook_data: PullRequestEventDTO,
+    ) -> ReviewContextDTO | None:
+        """What the pull request already says, or ``None`` for a first review.
+
+        Reading the history is how a second review avoids repeating itself, but it
+        is not worth losing a review over: a host that refuses the call (an older
+        token without the right scope, a blocked endpoint) costs only the context,
+        and the review continues from the diff alone.
+        """
+        try:
+            context = await tenant.git_port.fetch_review_context(
+                repo=webhook_data.repo_full_name,
+                index=webhook_data.pr_number,
+            )
+        except Exception:
+            logger.warning(
+                "could not read the earlier comments for connection %s, %s#%s; reviewing without them",
+                tenant.key,
+                webhook_data.repo_full_name,
+                webhook_data.pr_number,
+            )
+            return None
+
+        if context is None or tenant.config.include_pr_discussion:
+            return context
+
+        # ReVu's own findings are its own output; only other people's words are
+        # held back when a connection asks for that.
+        return ReviewContextDTO(comments=context.findings)
+
+    @staticmethod
+    def _with_progress(review: ReviewResponseDTO, context: ReviewContextDTO | None) -> ReviewResponseDTO:
+        """Say how many earlier findings were addressed.
+
+        The total is ReVu's own count, so a model reporting fewer findings cannot
+        shrink it; a model reporting none at all gets no line rather than a claim
+        of zero fixes.
+        """
+        if context is None or not context.findings:
+            return review
+
+        total = len(context.findings)
+        reported = review.previous_findings or []
+
+        if not reported:
+            logger.warning("no status reported for %d earlier findings; omitting the progress line", total)
+
+            return review
+
+        fixed = min(sum(1 for finding in reported if finding.is_fixed), total)
+        summary = f"📊 Из прошлых замечаний исправлено: {fixed} из {total}."
+        summary += " Все замечания закрыты." if fixed == total else f" Осталось: {total - fixed}."
+
+        return replace(review, general_comment=f"{summary}\n\n{review.general_comment}")
+
     async def _run_review(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
         diff = await tenant.git_port.fetch_diff(
             repo=webhook_data.repo_full_name,
             index=webhook_data.pr_number,
         )
+
+        context = await self._fetch_review_context(tenant, webhook_data)
 
         task = ReviewTask(
             diff=diff,
@@ -46,6 +108,7 @@ class ReviewService:
             pr_title=webhook_data.pr_title,
             pr_body=webhook_data.pr_body,
             system_prompt=tenant.config.system_prompt,
+            previous_review=context,
         )
 
         match tenant.config.review_mode:
@@ -61,6 +124,8 @@ class ReviewService:
                 annotated_diff = self.annotate_diff(diff_text=diff)
 
                 dto_review = await tenant.ai_port.get_inline_response(replace(task, diff=annotated_diff))
+
+                dto_review = self._with_progress(dto_review, context)
 
                 dto_review, dropped = drop_unanchored_comments(
                     dto_review,

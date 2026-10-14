@@ -9,11 +9,22 @@ from revu.domain.entities.dto.ai_provider_dto import (
     GitLabReviewCommentDTO,
     ReviewResponseDTO,
 )
+from revu.domain.entities.dto.review_context_dto import (
+    PreviousCommentDTO,
+    ReviewContextDTO,
+)
 from revu.domain.entities.exceptions.git_provider_exceptions import (
     UnsupportedReviewCommentException,
 )
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.git_providers.gitlab.helpers import json_diff_to_unified
+from revu.infrastructure.git_providers.review_context import (
+    CONTEXT_PAGE_SIZE,
+    body_of,
+    build_context,
+    fetch_list_pages,
+    sort_key,
+)
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 # GitLab caps per_page at 100 and reports no total, so paging stops on a short
@@ -36,6 +47,7 @@ class GitlabPort(GitProviderProtocol):
         self.config = config
         self.gitlab_token = config.user_token
         self.gitlab_url = config.base_url or self.DEFAULT_API_URL
+        self._username: str | None = None
 
     def _get_headers(self) -> dict[str, str]:
         return {"PRIVATE-TOKEN": self.gitlab_token}
@@ -75,6 +87,65 @@ class GitlabPort(GitProviderProtocol):
                 break
 
         return json_diff_to_unified(file_diffs)
+
+    async def _get_username(self) -> str:
+        """The bot's own username, fetched once: it is what marks ReVu's notes.
+
+        The credential identifies the bot, so the answer cannot change while this
+        port lives.
+        """
+        if self._username is None:
+            payload = await self.http_client.get(url=self._api_url("user"), headers=self._get_headers())
+            username = payload.get("username") if isinstance(payload, dict) else None
+            self._username = username if isinstance(username, str) else ""
+
+        return self._username
+
+    @staticmethod
+    def _note(raw: dict, username: str) -> PreviousCommentDTO | None:
+        if raw.get("system"):
+            # "changed the description", "added 3 commits" and friends.
+            return None
+
+        body = body_of(raw)
+        if not body:
+            return None
+
+        author = raw.get("author")
+        author_name = author.get("username") if isinstance(author, dict) else ""
+        raw_position = raw.get("position")
+        position = raw_position if isinstance(raw_position, dict) else {}
+        path = position.get("new_path") or position.get("old_path")
+        line = position.get("new_line") or position.get("old_line")
+
+        return PreviousCommentDTO(
+            author=author_name if isinstance(author_name, str) else "",
+            body=body,
+            is_revu=bool(username) and author_name == username,
+            path=path if isinstance(path, str) else None,
+            line=line if isinstance(line, int) else None,
+            resolved=bool(raw.get("resolved")),
+        )
+
+    async def fetch_review_context(self, repo: str, index: int) -> ReviewContextDTO | None:
+        """Notes on the merge request, oldest first.
+
+        GitLab keeps the whole conversation — including system notes — in one
+        list, and reports whether a note was resolved.
+        """
+        username = await self._get_username()
+        project = self._project(repo)
+
+        raws = await fetch_list_pages(
+            self.http_client,
+            lambda page: self._api_url(
+                f"projects/{project}/merge_requests/{index}/notes"
+                f"?per_page={CONTEXT_PAGE_SIZE}&page={page}&sort=asc&order_by=created_at"
+            ),
+            self._get_headers(),
+        )
+
+        return build_context((sort_key(raw), self._note(raw, username)) for raw in raws)
 
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
         await self.http_client.post(

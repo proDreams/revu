@@ -47,4 +47,5 @@ class OpenAIPort(BaseAIPort):
             general_comment=parsed_output.general_comment,  # type: ignore
             comments=[comment.model_dump() for comment in parsed_output.comments],  # type: ignore
             git_host=task.git_host,
+            previous_findings=[finding.model_dump() for finding in parsed_output.previous_findings],  # type: ignore
         )
