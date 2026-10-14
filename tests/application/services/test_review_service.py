@@ -3,12 +3,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
-from revu.application.entities.exceptions.webhook_service_exceptions import (
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
+from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
 )
 from revu.application.entities.tenant import GitConnection, TenantContext
-from revu.application.services.webhook_service import WebhookService
+from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -59,7 +59,7 @@ def git_port():
 
 @pytest.fixture
 def service():
-    return WebhookService()
+    return ReviewService()
 
 
 def make_tenant(ai_port, git_port, **connection) -> TenantContext:
@@ -200,7 +200,7 @@ new file mode 100644
 +created
 """
 
-    annotated = WebhookService.annotate_diff(diff_text=diff)
+    annotated = ReviewService.annotate_diff(diff_text=diff)
 
     assert "diff --git /dev/null b/new.py" in annotated
     assert "new file mode 100644" in annotated
@@ -216,7 +216,7 @@ deleted file mode 100644
 -deleted
 """
 
-    annotated = WebhookService.annotate_diff(diff_text=diff)
+    annotated = ReviewService.annotate_diff(diff_text=diff)
 
     assert "deleted file mode 100644" in annotated
     assert "- [1] deleted" in annotated
@@ -234,7 +234,7 @@ def test_annotate_diff_drops_no_newline_marker():
 +new
 """
 
-    annotated = WebhookService.annotate_diff(diff_text=diff)
+    annotated = ReviewService.annotate_diff(diff_text=diff)
 
     assert "No newline at end of file" not in annotated
     assert "- [1] old" in annotated
@@ -242,4 +242,26 @@ def test_annotate_diff_drops_no_newline_marker():
 
 
 def test_annotate_diff_passes_empty_text_through():
-    assert WebhookService.annotate_diff(diff_text="") == ""
+    assert ReviewService.annotate_diff(diff_text="") == ""
+
+
+async def test_unanchored_comments_are_dropped_before_sending(service, ai_port, git_port, caplog):
+    """One hallucinated line must not cost the whole review."""
+    from revu.domain.entities.dto.ai_provider_dto import GithubReviewCommentDTO
+
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="inline review",
+        comments=[
+            GithubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="kept"),
+            GithubReviewCommentDTO(path="app.py", line=999, side="RIGHT", body="hallucinated"),
+        ],
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    with caplog.at_level("WARNING"):
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    sent = git_port.send_inline.await_args.kwargs["review"]
+    assert [comment.body for comment in sent.comments] == ["kept"]
+    assert sent.general_comment == "inline review"
+    assert "dropped 1 of 2 inline comments for connection gh-main" in caplog.text

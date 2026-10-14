@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.exceptions.base import CoreException
 
@@ -41,6 +41,9 @@ CONNECTION_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{2,31}$")
 
 DEFAULT_REVIEW_MODE = ReviewModeEnum.INLINE
 DEFAULT_MAX_CONCURRENT_REVIEWS = 3
+# Telling the pull request that a review failed is the default: a bot that stays
+# silent looks like it worked.
+DEFAULT_NOTIFY_ON_FAILURE = True
 DEFAULT_HTTP_TIMEOUT = 30.0
 DEFAULT_HTTP_ATTEMPTS = 3
 DEFAULT_HTTP_BACKOFF = 0.5
@@ -107,6 +110,7 @@ class GitConnectionConfig:
     ai_provider: str
     review_mode: ReviewModeEnum
     max_concurrent_reviews: int
+    notify_on_failure: bool = DEFAULT_NOTIFY_ON_FAILURE
     base_url: str | None = None
     reviewer: str | None = None
     system_prompt: str | None = None

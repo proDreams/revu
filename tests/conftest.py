@@ -12,7 +12,7 @@ from revu.application.entities.config import (
     Settings,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.application.entities.tenant import GitConnection, TenantContext
 from revu.domain.entities.dto.review_task_dto import ReviewTask
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum

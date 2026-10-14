@@ -16,7 +16,10 @@ class OpenAICompatibleAdapter:
         self.profile = profile
         self._openai_client = AsyncClient(
             api_key=profile.api_key,
-            http_client=self._http_client.get_client(),
+            # The SDK is typed against its own httpx build, which is not the
+            # one we depend on; the boundary tests drive the real client through
+            # our transport, so the mismatch is in the stubs, not at runtime.
+            http_client=self._http_client.get_client(),  # type: ignore[arg-type]
             base_url=profile.base_url,
         )
         self.model = profile.model

@@ -33,7 +33,7 @@ def test_get_messages():
     )
 
     assert isinstance(messages, list)
-    assert messages[0]["text"] == "system prompt"
+    assert messages[0].text == "system prompt"
 
 
 async def test_comment_response():
@@ -73,7 +73,7 @@ async def test_the_task_system_prompt_is_used():
     await port.get_inline_response(make_task(system_prompt="test system-prompt"))
 
     messages = port.adapter.get_chat_response.await_args.kwargs["messages"]
-    assert messages[0]["text"].startswith("test system-prompt\n\n")
+    assert messages[0].text.startswith("test system-prompt\n\n")
 
 
 async def test_gitea_inline_response():

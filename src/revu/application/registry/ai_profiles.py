@@ -7,7 +7,7 @@ from revu.application.entities.config import (
     UnknownConnectionError,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.exceptions.webhook_routes_exceptions import (
+from revu.application.entities.exceptions.provider_exceptions import (
     AIProviderException,
 )
 from revu.domain.protocols.ai_provider_protocol import (

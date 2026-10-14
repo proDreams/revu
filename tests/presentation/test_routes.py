@@ -8,8 +8,10 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from revu.application.app import _core_exception_handler, create_app
-from revu.application.services.webhook_service import WebhookService
+from revu.application.entities.exceptions.ai_adapters_exceptions import InvalidAIOutput
+from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
 from revu.domain.entities.exceptions.base import CoreException
 from revu.presentation.webhooks.routes import review_pull_request
 from tests.conftest import BITBUCKET_SECRET, GITEA_SECRET, GITHUB_SECRET
@@ -20,7 +22,8 @@ from tests.fixtures.presentation_fixtures.payloads import (
     VALID_WEBHOOK_PAYLOAD,
 )
 
-pytestmark = pytest.mark.unit
+# Integration: exercises the real FastAPI app through TestClient.
+pytestmark = pytest.mark.integration
 
 
 def _sign(body: bytes, secret: str) -> dict[str, str]:
@@ -37,7 +40,7 @@ def reviews(monkeypatch):
     async def fake_process(self, tenant, webhook_data) -> None:
         processed.append((tenant.key, webhook_data))
 
-    monkeypatch.setattr(WebhookService, "process_webhook", fake_process)
+    monkeypatch.setattr(ReviewService, "process_webhook", fake_process)
 
     return processed
 
@@ -144,24 +147,80 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
-async def test_review_task_swallows_errors_instead_of_killing_the_worker(caplog, tenant):
-    service = AsyncMock()
-    service.process_webhook.side_effect = RuntimeError("boom")
-
-    event = PullRequestEventDTO(
-        action="opened",  # type: ignore[arg-type]
+def _event() -> PullRequestEventDTO:
+    return PullRequestEventDTO(
+        action=PullRequestActionEnum.OPENED,
         repo_full_name="owner/repo",
         pr_number=3,
         pr_title="t",
         commit_sha="a" * 40,
     )
 
+
+async def test_review_task_swallows_errors_instead_of_killing_the_worker(caplog, tenant):
+    service = AsyncMock()
+    service.process_webhook.side_effect = RuntimeError("boom")
+
     with caplog.at_level("ERROR"):
-        await review_pull_request(service, tenant, event)  # type: ignore[arg-type]
+        await review_pull_request(service, tenant, _event())
 
     service.process_webhook.assert_awaited_once()
     assert "Review failed for connection gh-main" in caplog.text
     assert "owner/repo#3" in caplog.text
+
+
+async def test_the_start_log_names_the_connection_and_the_action(caplog, tenant):
+    service = AsyncMock()
+
+    with caplog.at_level("INFO"):
+        await review_pull_request(service, tenant, _event())
+
+    assert "Reviewing owner/repo#3" in caplog.text
+    assert "action opened" in caplog.text
+    assert "connection gh-main" in caplog.text
+
+
+async def test_a_failed_review_is_reported_on_the_pull_request(caplog, tenant):
+    """Silence is the bug this reports on: the author has to learn about it."""
+    service = AsyncMock()
+    service.process_webhook.side_effect = InvalidAIOutput("raw model output: sk-123")
+
+    with caplog.at_level("ERROR"):
+        await review_pull_request(service, tenant, _event())
+
+    tenant.git_port.send_comment.assert_awaited_once()
+    body = tenant.git_port.send_comment.await_args.kwargs["review"]
+    assert tenant.git_port.send_comment.await_args.kwargs["repo_owner"] == "owner/repo"
+    assert tenant.git_port.send_comment.await_args.kwargs["index"] == 3
+    assert "ReVu не смог выполнить ревью" in body
+    assert "InvalidAIOutput" in body
+    # Only the error type reaches the pull request; the message stays in the log.
+    assert "sk-123" not in body
+
+
+async def test_the_notice_is_skipped_when_the_connection_disables_it(make_tenant):
+    from tests.conftest import make_connection
+
+    tenant = make_tenant(make_connection(notify_on_failure=False))
+    service = AsyncMock()
+    service.process_webhook.side_effect = RuntimeError("boom")
+
+    await review_pull_request(service, tenant, _event())
+
+    tenant.git_port.send_comment.assert_not_awaited()
+
+
+async def test_a_failing_notice_is_only_logged(caplog, tenant):
+    """A broken notice must not mask the original failure or loop."""
+    service = AsyncMock()
+    service.process_webhook.side_effect = RuntimeError("boom")
+    tenant.git_port.send_comment.side_effect = RuntimeError("comment rejected")
+
+    with caplog.at_level("ERROR"):
+        await review_pull_request(service, tenant, _event())
+
+    assert "Review failed for connection gh-main" in caplog.text
+    assert "Could not publish the failure notice" in caplog.text
 
 
 class _Boom(CoreException):

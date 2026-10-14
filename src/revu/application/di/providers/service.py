@@ -1,9 +1,9 @@
 from dishka import Provider, Scope, provide
 
-from revu.application.services.webhook_service import WebhookService
+from revu.application.services.review_service import ReviewService
 
 
-class WebhookServiceProvider(Provider):
+class ReviewServiceProvider(Provider):
     """Stateless review orchestrator.
 
     It holds no provider of its own: the connection and its AI profile arrive
@@ -13,5 +13,5 @@ class WebhookServiceProvider(Provider):
     scope = Scope.APP
 
     @provide
-    def webhook_service(self) -> WebhookService:
-        return WebhookService()
+    def review_service(self) -> ReviewService:
+        return ReviewService()

@@ -23,6 +23,10 @@ dependencies = [
 dev = [
     "pre-commit>=4.7.0",
     "ruff>=0.17.0",
+    # Kept in step with the mirrors-mypy rev in .pre-commit-config.yaml: the hook
+    # checks the whole tree without project dependencies, while `uv run mypy src`
+    # checks the dependency boundaries too (see the CI workflow).
+    "mypy>=1.20,<2",
 ]
 
 [build-system]

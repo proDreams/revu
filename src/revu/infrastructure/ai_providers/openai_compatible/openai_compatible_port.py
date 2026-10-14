@@ -23,7 +23,7 @@ class OpenAICompatiblePort(BaseAIPort):
     def _get_messages(
         system_prompt: str, user_prompt: str
     ) -> list[ChatCompletionUserMessageParam | ChatCompletionSystemMessageParam]:
-        messages = [
+        messages: list[ChatCompletionUserMessageParam | ChatCompletionSystemMessageParam] = [
             ChatCompletionSystemMessageParam(role="system", content=system_prompt),
             ChatCompletionUserMessageParam(role="user", content=user_prompt),
         ]

@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 import uvicorn
 from dishka.integrations.fastapi import setup_dishka
@@ -12,7 +13,7 @@ from revu.application.config import get_logger, load_settings
 from revu.application.di import create_container
 from revu.application.entities.config import Settings, UnknownConnectionError
 from revu.application.registry.git_connections import GitConnectionRegistry
-from revu.application.services.webhook_service import WebhookService
+from revu.application.services.review_service import ReviewService
 from revu.domain.entities.exceptions.base import CoreException
 from revu.presentation.health import health_router
 from revu.presentation.webhooks.routes import webhooks_router
@@ -21,23 +22,25 @@ from revu.presentation.webhooks.validators import ReviewNotNeededError
 logger = get_logger(name=__name__)
 
 
-async def _validation_error_handler(_: Request, exc: ValidationError) -> JSONResponse:
+async def _validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
     """A payload rejected by pydantic is a client error, not a server error."""
-    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+    errors = cast(ValidationError, exc).errors()
+
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
-async def _review_not_needed_handler(_: Request, exc: ReviewNotNeededError) -> JSONResponse:
+async def _review_not_needed_handler(_: Request, exc: Exception) -> JSONResponse:
     """Acknowledge a delivery ReVu has nothing to do for, so hosts do not retry."""
-    return JSONResponse(status_code=200, content={"detail": exc.reason})
+    return JSONResponse(status_code=200, content={"detail": cast(ReviewNotNeededError, exc).reason})
 
 
-async def _unknown_connection_handler(_: Request, exc: UnknownConnectionError) -> JSONResponse:
+async def _unknown_connection_handler(_: Request, exc: Exception) -> JSONResponse:
     """A webhook for a connection that is not configured is a plain 404."""
     logger.warning("webhook for unknown connection: %s", exc)
     return JSONResponse(status_code=404, content={"detail": "Unknown webhook connection"})
 
 
-async def _core_exception_handler(_: Request, exc: CoreException) -> JSONResponse:
+async def _core_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Turn an expected domain failure into a 500 without leaking internals."""
     logger.exception("Unhandled application error: %s", exc)
     return JSONResponse(status_code=500, content={"detail": "Internal application error"})
@@ -50,7 +53,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # connection therefore fails at startup, not on the first webhook.
     container = app.state.dishka_container
     settings = await container.get(Settings)
-    await container.get(WebhookService)
+    await container.get(ReviewService)
 
     connections = await container.get(GitConnectionRegistry)
     logger.info(

@@ -12,7 +12,7 @@ from revu.application.entities.config import (
     ConfigError,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from tests.conftest import GITHUB_SECRET, GITHUB_TOKEN, make_raw_settings
 
@@ -300,3 +300,39 @@ def test_log_settings_never_require_a_file():
 
     assert log_settings.directory == DEFAULT_LOG_DIR
     assert log_settings.level == "INFO"
+
+
+def test_failures_are_reported_on_the_pull_request_by_default():
+    """A bot that only logs into the void looks like it worked."""
+    assert load_settings(make_raw_settings()).git_connections["gh-main"].notify_on_failure is True
+
+
+def test_the_global_flag_can_turn_reporting_off():
+    raw = make_raw_settings(NOTIFY_ON_FAILURE=False)
+
+    assert load_settings(raw).git_connections["gh-main"].notify_on_failure is False
+
+
+def test_a_connection_can_override_the_flag():
+    raw = _with_connection(NOTIFY_ON_FAILURE=True)
+
+    assert load_settings(raw).git_connections["gh-main"].notify_on_failure is True
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("false", False), ("no", False), ("off", False), ("TRUE", True), ("yes", True), (True, True), (False, False)],
+)
+def test_the_flag_accepts_yaml_booleans_and_strings(value, expected):
+    raw = _with_connection(NOTIFY_ON_FAILURE=value)
+
+    assert load_settings(raw).git_connections["gh-main"].notify_on_failure is expected
+
+
+def test_a_non_boolean_flag_is_rejected():
+    raw = _with_connection(NOTIFY_ON_FAILURE="maybe")
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_settings(raw)
+
+    assert "NOTIFY_ON_FAILURE must be a boolean" in str(exc_info.value)

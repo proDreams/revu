@@ -2,16 +2,20 @@ from dataclasses import replace
 
 from unidiff import PatchSet
 
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
-from revu.application.entities.exceptions.webhook_service_exceptions import (
+from revu.application.config import get_logger
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
+from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
 )
 from revu.application.entities.tenant import TenantContext
+from revu.application.services.diff_anchors import DiffAnchors, drop_unanchored_comments
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.dto.review_task_dto import ReviewTask
 
+logger = get_logger(name=__name__)
 
-class WebhookService:
+
+class ReviewService:
     """Runs one review for one tenant.
 
     Stateless by design: the git port, the AI port, the review mode, the prompt
@@ -57,6 +61,20 @@ class WebhookService:
                 annotated_diff = self.annotate_diff(diff_text=diff)
 
                 dto_review = await tenant.ai_port.get_inline_response(replace(task, diff=annotated_diff))
+
+                dto_review, dropped = drop_unanchored_comments(
+                    dto_review,
+                    DiffAnchors.from_diff(diff),
+                    tenant.config.host,
+                )
+
+                if dropped:
+                    logger.warning(
+                        "dropped %d of %d inline comments for connection %s: their lines are not in the diff",
+                        dropped,
+                        dropped + len(dto_review.comments),
+                        tenant.key,
+                    )
 
                 await tenant.git_port.send_inline(
                     sha=webhook_data.commit_sha,

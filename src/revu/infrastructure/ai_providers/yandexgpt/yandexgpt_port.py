@@ -1,7 +1,10 @@
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.entities.dto.review_task_dto import ReviewTask
 from revu.infrastructure.ai_providers.base import BaseAIPort
-from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import YandexGPTAdapter
+from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import (
+    TextMessage,
+    YandexGPTAdapter,
+)
 
 
 class YandexGPTPort(BaseAIPort):
@@ -9,8 +12,11 @@ class YandexGPTPort(BaseAIPort):
         self.adapter = adapter
 
     @staticmethod
-    def _get_messages(system_prompt: str, user_prompt: str) -> list[dict[str, str]]:
-        return [{"role": "system", "text": system_prompt}, {"role": "user", "text": user_prompt}]
+    def _get_messages(system_prompt: str, user_prompt: str) -> list[TextMessage]:
+        return [
+            TextMessage(role="system", text=system_prompt),
+            TextMessage(role="user", text=user_prompt),
+        ]
 
     async def get_comment_response(self, task: ReviewTask) -> str:
         messages = self._get_messages(

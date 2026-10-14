@@ -62,10 +62,11 @@ GIT_PROVIDERS:
     # GIT_PROVIDER_REVIEWER: "slug"
     # (optional) SYSTEM_PROMPT — extra instructions for this connection only.
     # SYSTEM_PROMPT: "Always mention the project coding standards."
-    # (optional) REVIEW_MODE and MAX_CONCURRENT_REVIEWS — per-connection values
-    # that fall back to the global ones.
+    # (optional) REVIEW_MODE, MAX_CONCURRENT_REVIEWS and NOTIFY_ON_FAILURE —
+    # per-connection values that fall back to the global ones.
     # REVIEW_MODE: "comment"
     # MAX_CONCURRENT_REVIEWS: 1
+    # NOTIFY_ON_FAILURE: false
 
 # logger
 # LOG_LEVEL — log detail level (DEBUG, INFO, WARNING, ERROR, CRITICAL)

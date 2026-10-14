@@ -11,7 +11,7 @@ from revu.application.entities.config import (
     UnknownConnectionError,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.exceptions.webhook_routes_exceptions import (
+from revu.application.entities.exceptions.provider_exceptions import (
     AIProviderException,
     GitProviderException,
 )
@@ -29,7 +29,8 @@ from revu.infrastructure.git_providers.github.github_port import GithubPort
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 from tests.conftest import make_ai_profile, make_connection, make_settings
 
-pytestmark = pytest.mark.unit
+# Integration: exercises the real DI container and its providers.
+pytestmark = pytest.mark.integration
 
 
 async def _container(app_settings) -> AsyncContainer:

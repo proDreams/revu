@@ -13,6 +13,11 @@ REVIEW_MODE: "inline"
 # MAX_CONCURRENT_REVIEWS — how many reviews one connection may run at once.
 # Reviews over the limit wait for a free slot instead of piling up.
 MAX_CONCURRENT_REVIEWS: 3
+# NOTIFY_ON_FAILURE — publish a short comment on the pull request when a review
+# fails, so a silent bot cannot look like a working one. Only the error type goes
+# into the comment; the message and traceback stay in the logs. Set to false if a
+# systemic failure (a revoked token, say) would produce too much noise.
+NOTIFY_ON_FAILURE: true
 
 # ── AI profiles ──────────────────────────────────────────────────────────────
 # Named AI settings. Connections without an explicit AI_PROVIDER use

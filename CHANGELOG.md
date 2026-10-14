@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Inline comments are checked against the diff before they are published. A host
+  rejects the whole review request when one anchor is not in the diff, which used
+  to lose every other comment and the summary with it; comments that point
+  outside the diff are now dropped and counted in the log.
+- `NOTIFY_ON_FAILURE` (default `true`, overridable per connection) publishes a
+  short comment on the pull request when a review fails. Only the error type
+  reaches the pull request; the message and traceback stay in the log.
+- Every log record carries the connection key, so a review that runs in a
+  background task can be traced even when several connections are active.
+- `uv run mypy src` (also `make typecheck`) type-checks against the project
+  dependencies. The pre-commit hook runs mypy without them, so it cannot see
+  errors at the fastapi/pydantic/openai boundary.
 - `DEFAULT_AI_PROVIDER` plus an optional per-connection `AI_PROVIDER` override:
   several git connections may share one AI profile, and one of them may use
   another model.
@@ -61,7 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - YandexGPT now fails at startup when `AI_PROVIDER_FOLDER_ID` is missing instead
   of failing on the first review.
 - The logger reads only the logging keys, so importing the configuration module
-  still never requires a settings file to exist.
+  still never requires a settings file to exist, and it creates the log file on
+  the first record instead of on the first `get_logger()` call.
+- `WebhookService` became `ReviewService` (with its module, exceptions and DI
+  provider) now that it serves every connection rather than one webhook; the
+  exception and review-mode modules were renamed to match.
 
 [2.0.0]: https://github.com/proDreams/revu/compare/1.7.0...2.0.0
 
@@ -87,6 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- YandexGPT reviews crashed with `TypeError: object AsyncGPTModel can't be used
+  in 'await' expression`: creating the model is synchronous in that SDK, only
+  `run` is awaited. The unit test mocked the whole client, which made the call
+  look awaitable and hid it.
 - `REVIEW_MODE=comment` with `AI_PROVIDER=openai` failed with
   `TypeError: Unsupported response_format type - None`. The adapter passed
   `text_format=None`, which the SDK treats as a given value; it is now omitted

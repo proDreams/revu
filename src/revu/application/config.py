@@ -15,7 +15,7 @@ the logger fail in an environment without a settings file (CI, for example).
 import logging
 from collections.abc import Mapping
 from logging import Logger
-from typing import Any
+from typing import Any, NoReturn
 
 from dynaconf import Dynaconf
 
@@ -32,6 +32,7 @@ from revu.application.entities.config import (
     DEFAULT_LOG_LEVEL,
     DEFAULT_LOG_MAX_SIZE_MB,
     DEFAULT_MAX_CONCURRENT_REVIEWS,
+    DEFAULT_NOTIFY_ON_FAILURE,
     GIT_PROVIDERS_REQUIRING_URL,
     REQUIRED_AI_KEYS,
     SETTINGS_FILE,
@@ -45,12 +46,12 @@ from revu.application.entities.config import (
     Settings,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
-from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
+from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.logger.project_logger import ProjectLogger
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     raise ConfigError(message)
 
 
@@ -115,6 +116,28 @@ def _positive_int(body: Mapping[str, Any], path: str, key: str, default: int) ->
     return value
 
 
+TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+
+
+def _boolean(body: Mapping[str, Any], path: str, key: str, default: bool) -> bool:
+    """Read a flag that may arrive as a YAML boolean or as a string."""
+    raw_value = body.get(key)
+    if raw_value is None:
+        return default
+
+    if isinstance(raw_value, bool):
+        return raw_value
+
+    text = str(raw_value).strip().lower()
+    if text in TRUE_VALUES:
+        return True
+    if text in FALSE_VALUES:
+        return False
+
+    _fail(f"{path}.{key} must be a boolean; got {raw_value!r}")
+
+
 def _parse_ai_profiles(raw: Mapping[str, Any]) -> dict[str, AIProfileConfig]:
     section = raw.get("AI_PROVIDERS")
     if not section:
@@ -151,6 +174,7 @@ def _parse_git_connections(
     default_review_mode: ReviewModeEnum,
     default_system_prompt: str | None,
     default_max_concurrent: int,
+    default_notify_on_failure: bool,
 ) -> dict[str, GitConnectionConfig]:
     section = raw.get("GIT_PROVIDERS")
     if not section:
@@ -199,6 +223,7 @@ def _parse_git_connections(
             ),
             system_prompt=_text(body, path, "SYSTEM_PROMPT", required=False) or default_system_prompt,
             max_concurrent_reviews=_positive_int(body, path, "MAX_CONCURRENT_REVIEWS", default_max_concurrent),
+            notify_on_failure=_boolean(body, path, "NOTIFY_ON_FAILURE", default_notify_on_failure),
         )
 
     return connections
@@ -237,6 +262,7 @@ def _load_settings(raw: Mapping[str, Any]) -> Settings:
         default_review_mode=review_mode,
         default_system_prompt=_text(raw, "config", "SYSTEM_PROMPT", required=False),
         default_max_concurrent=int(raw.get("MAX_CONCURRENT_REVIEWS") or DEFAULT_MAX_CONCURRENT_REVIEWS),
+        default_notify_on_failure=_boolean(raw, "config", "NOTIFY_ON_FAILURE", DEFAULT_NOTIFY_ON_FAILURE),
     )
 
     return Settings(

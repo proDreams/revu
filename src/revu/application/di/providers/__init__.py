@@ -3,7 +3,7 @@ from dishka import Provider
 from revu.application.di.providers.ai import AIProfileProvider
 from revu.application.di.providers.app import AppProvider
 from revu.application.di.providers.git import GitConnectionProvider
-from revu.application.di.providers.service import WebhookServiceProvider
+from revu.application.di.providers.service import ReviewServiceProvider
 from revu.application.di.providers.tenant import TenantProvider
 
 
@@ -14,7 +14,7 @@ def get_providers() -> list[Provider]:
         GitConnectionProvider(),
         AIProfileProvider(),
         TenantProvider(),
-        WebhookServiceProvider(),
+        ReviewServiceProvider(),
     ]
 
 

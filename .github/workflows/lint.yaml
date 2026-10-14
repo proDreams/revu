@@ -50,6 +50,11 @@ jobs:
       - name: Lint pre-commit
         run: uv run pre-commit run --all-files
 
+      - name: Type check with project dependencies
+        # pre-commit runs mypy in an isolated env without the dependencies, so it
+        # cannot see errors at the fastapi/pydantic/openai boundary. This step can.
+        run: uv run mypy src
+
       - name: Run Telegram Notify Action
         uses: proDreams/actions-telegram-notifier@main
         if: always()

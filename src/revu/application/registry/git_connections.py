@@ -5,7 +5,7 @@ from revu.application.entities.config import (
     Settings,
     UnknownConnectionError,
 )
-from revu.application.entities.exceptions.webhook_routes_exceptions import (
+from revu.application.entities.exceptions.provider_exceptions import (
     GitProviderException,
 )
 from revu.application.entities.tenant import GitConnection

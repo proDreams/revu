@@ -59,3 +59,8 @@ class GiteaReviewResponse(ReviewResponse):
 
 class BitbucketReviewResponse(ReviewResponse):
     comments: list[BitbucketReviewComment]
+
+
+# The three shapes differ only in their comment type, which is exactly what the
+# git host decides; this alias keeps `.comments` visible to the type checker.
+InlineReviewResponse = GithubReviewResponse | GiteaReviewResponse | BitbucketReviewResponse

@@ -5,6 +5,11 @@ install:
 lint:
 	uv run pre-commit run --all
 
+# The pre-commit hook cannot see the project dependencies, so it misses type
+# errors at the fastapi/pydantic/openai boundary; this one does not.
+typecheck:
+	uv run mypy src
+
 
 # DEV
 install_dev:

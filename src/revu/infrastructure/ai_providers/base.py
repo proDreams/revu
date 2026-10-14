@@ -19,7 +19,7 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     BitbucketReviewResponse,
     GiteaReviewResponse,
     GithubReviewResponse,
-    ReviewResponse,
+    InlineReviewResponse,
 )
 from revu.domain.entities.dto.review_task_dto import ReviewTask
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
@@ -80,7 +80,7 @@ class BaseAIPort(AIProviderProtocol):
         return DIFF_PROMPT.format(pr_title=task.pr_title, pr_body=task.pr_body, diff=task.diff)
 
     @staticmethod
-    def _get_response_model(git_host: GitProviderEnum) -> type[ReviewResponse]:
+    def _get_response_model(git_host: GitProviderEnum) -> type[InlineReviewResponse]:
         match git_host:
             case GitProviderEnum.GITHUB:
                 return GithubReviewResponse
@@ -95,7 +95,7 @@ class BaseAIPort(AIProviderProtocol):
     def _parse_inline_payload(
         raw_output: str,
         provider: str,
-        response_model: type[ReviewResponse],
+        response_model: type[InlineReviewResponse],
     ) -> dict[str, Any]:
         """Decode the JSON review body of providers without schema enforcement.
 
