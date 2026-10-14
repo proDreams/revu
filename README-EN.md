@@ -1,6 +1,6 @@
 # Napkin Tools: ReVu
 
-**English** · [Русский](README.md)
+**English** · [Русский](README.md) — the main README, and the one that is kept up to date first
 
 > 🤖 Self-hosted AI code review for your Pull Requests.
 
