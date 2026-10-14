@@ -7,10 +7,7 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import (
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.base import BaseAIPort
-from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import (
-    GigaChatAdapter,
-    get_gigachat_adapter,
-)
+from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import GigaChatAdapter
 
 
 class GigaChatPort(BaseAIPort):
@@ -28,9 +25,8 @@ class GigaChatPort(BaseAIPort):
         )
 
     async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
-        system_prompt = self.system_prompt or self._get_comment_prompt()
         chat = self._get_chat(
-            system_prompt=system_prompt,
+            system_prompt=self._comment_instructions(),
             user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
         )
 
@@ -39,13 +35,8 @@ class GigaChatPort(BaseAIPort):
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
     ) -> ReviewResponseDTO:
-        system_prompt = self._get_prompt(git_provider)
-
-        if self.system_prompt:
-            system_prompt = self.system_prompt
-
         chat = self._get_chat(
-            system_prompt=system_prompt,
+            system_prompt=self._inline_instructions(git_provider),
             user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
         )
 
@@ -61,7 +52,3 @@ class GigaChatPort(BaseAIPort):
             comments=serialized_output["comments"],
             git_provider=git_provider,
         )
-
-
-def get_gigachat_port() -> GigaChatPort:
-    return GigaChatPort(adapter=get_gigachat_adapter())

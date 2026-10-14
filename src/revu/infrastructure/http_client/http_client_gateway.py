@@ -3,7 +3,6 @@ from typing import Any, Literal
 
 import httpx
 
-from revu.application.base.singleton import Singleton
 from revu.application.config import get_logger, get_settings
 from revu.application.entities.exceptions.http_gateway_exceptions import (
     HTTPGatewayAttemptLimitExceeded,
@@ -13,7 +12,13 @@ from revu.application.entities.exceptions.http_gateway_exceptions import (
 logger = get_logger(name=__name__)
 
 
-class HttpClientGateway(Singleton):
+class HttpClientGateway:
+    """Thin retrying wrapper around a single ``httpx.AsyncClient``.
+
+    The instance is application-scoped; call :meth:`aclose` once when the
+    container shuts down.
+    """
+
     def __init__(self) -> None:
         self.timeout = get_settings().HTTP_CLIENT_TIMEOUT
         self._client = httpx.AsyncClient(timeout=self.timeout)
@@ -77,6 +82,5 @@ class HttpClientGateway(Singleton):
     def get_client(self) -> httpx.AsyncClient:
         return self._client
 
-
-def get_http_gateway() -> HttpClientGateway:
-    return HttpClientGateway()
+    async def aclose(self) -> None:
+        await self._client.aclose()

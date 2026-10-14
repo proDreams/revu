@@ -21,7 +21,11 @@ class PullRequest(BaseModel):
 
 
 class GithubPullRequestWebhook(BaseModel):
-    action: PullRequestActionEnum
+    # Kept as a plain string: hosts send plenty of actions we simply ignore
+    # (``closed``, ``labeled``, ...). Narrowing to the actions that trigger a
+    # review happens in the validator, so those deliveries get 200 instead of
+    # a validation error.
+    action: str
     pull_request: PullRequest
     repository: Repo
 

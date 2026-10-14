@@ -6,12 +6,17 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import (
     UnknownGitProvider,
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
+    BitbucketReviewComment,
+    BitbucketReviewResponse,
     GiteaReviewComment,
     GiteaReviewResponse,
     GitHubReviewComment,
     GithubReviewResponse,
 )
-from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.dto.ai_provider_dto import (
+    BitBucketReviewCommentDTO,
+    ReviewResponseDTO,
+)
 from revu.infrastructure.ai_providers.openai.openai_port import OpenAIPort
 
 
@@ -76,6 +81,25 @@ async def test_github_with_system_prompt_inline_response():
 
     assert isinstance(result, ReviewResponseDTO)
 
+    # SYSTEM_PROMPT must extend the built-in prompt instead of replacing it,
+    # otherwise the JSON contract providers rely on disappears.
+    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
+    assert instructions.startswith("test system-prompt\n\n")
+    assert "general_comment" in instructions
+
+
+async def test_github_with_system_prompt_comment_response():
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed="output")
+    port = OpenAIPort(adapter=adapter)
+    port.system_prompt = "test system-prompt"
+
+    await port.get_comment_response(diff="d", pr_title="t")
+
+    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
+    assert instructions.startswith("test system-prompt\n\n")
+    assert instructions != "test system-prompt"
+
 
 async def test_gitea_inline_response():
     output_parsed = GiteaReviewResponse(
@@ -115,3 +139,24 @@ async def test_unknown_inline_response():
         await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
 
     assert "unknown git provider" in str(exc_info.value)
+
+
+async def test_bitbucket_inline_response():
+    output_parsed = BitbucketReviewResponse(
+        general_comment="test comment",
+        comments=[BitbucketReviewComment(path="test path", position=42, body="test body", lineType="ADDED")],
+    )
+
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
+    port = OpenAIPort(adapter=adapter)
+
+    result = await port.get_inline_response(diff="d", git_provider="bitbucket", pr_title="t", pr_body="b")
+
+    assert isinstance(result, ReviewResponseDTO)
+    assert result.general_comment == "test comment"
+
+    comment = result.comments[0]
+    assert isinstance(comment, BitBucketReviewCommentDTO)
+    assert comment.lineType == "ADDED"
+    assert comment.position == 42

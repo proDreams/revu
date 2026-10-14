@@ -4,10 +4,7 @@ from revu.application.config import get_settings
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.git_providers.bitbucket.helpers import json_diff_to_unified
-from revu.infrastructure.http_client.http_client_gateway import (
-    HttpClientGateway,
-    get_http_gateway,
-)
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class BitbucketPort(GitProviderProtocol):
@@ -35,10 +32,10 @@ class BitbucketPort(GitProviderProtocol):
 
         await self.http_client.post(url=comment_url, headers=self._get_headers(), payload=data)
 
-    async def _send_inline(self, repo: str, text: str, index: int, path: str, line_type: str) -> None:
+    async def _send_inline(self, repo: str, text: str, index: int, path: str, line_type: str, line: int) -> None:
         comment_url = f"rest/api/1.0/projects/{repo}/pull-requests/{index}/comments"
         comment_url = urljoin(self.bitbucket_url.rstrip("/") + "/", comment_url)  # type: ignore
-        data = {"text": text, "anchor": {"path": path, "lineType": line_type, "line": index, "diffType": "EFFECTIVE"}}
+        data = {"text": text, "anchor": {"path": path, "lineType": line_type, "line": line, "diffType": "EFFECTIVE"}}
 
         await self.http_client.post(url=comment_url, headers=self._get_headers(), payload=data)
 
@@ -46,10 +43,13 @@ class BitbucketPort(GitProviderProtocol):
         for comment in review.comments:
             if "lineType" not in comment.__dict__:
                 raise Exception("Only Bitbucket comments are supported")
-            await self._send_inline(repo_owner, comment.body, index, comment.path, comment.lineType)  # type: ignore
+            await self._send_inline(
+                repo_owner,
+                comment.body,
+                index,
+                comment.path,
+                comment.lineType,  # type: ignore
+                comment.position,  # type: ignore
+            )
 
         await self.send_comment(repo_owner, review.general_comment, index)
-
-
-def get_bitbucket_port() -> BitbucketPort:
-    return BitbucketPort(http_client=get_http_gateway())

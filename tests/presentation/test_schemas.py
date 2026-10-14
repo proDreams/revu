@@ -43,9 +43,12 @@ def test_bitbucket_webhook_schema_accepts_valid_payload():
     assert isinstance(bb_schema, BitBucketPullRequestWebhook)
 
 
-def test_github_webhook_schema_raises_invalid_action():
-    with pytest.raises(ValidationError):
-        GithubPullRequestWebhook(**INVALID_ACTION_WEBHOOK_PAYLOAD)
+def test_github_webhook_schema_keeps_unhandled_action():
+    # The schema only checks the payload shape; actions ReVu never acts on are
+    # filtered later by the validator so the host gets 200 instead of an error.
+    schema = GithubPullRequestWebhook(**INVALID_ACTION_WEBHOOK_PAYLOAD)
+
+    assert schema.action == INVALID_ACTION_WEBHOOK_PAYLOAD["action"]
 
 
 def test_github_webhook_schema_raises_invalid_payload():

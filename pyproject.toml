@@ -1,27 +1,28 @@
 [project]
 name = "revu"
-version = "1.5.0"
+version = "1.6.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "dynaconf>=3.2.13",
-    "fastapi>=0.136.1",
-    "gigachat>=0.2.1",
+    "dynaconf>=3.3.5",
+    "fastapi>=0.143.0",
+    "gigachat>=0.2.3",
     "httpx>=0.28.1",
-    "openai>=2.36.0",
-    "unidiff>=0.7.5",
-    "pydantic==2.13.4",
-    "yandex-ai-studio-sdk>=0.20.2",
-    "uvicorn>=0.46.0",
+    "openai>=3.31.0",
+    "unidiff>=1.0.1",
+    "pydantic==2.14.1",
+    "yandex-ai-studio-sdk>=0.22.1",
+    "uvicorn>=0.54.0",
+    "dishka>=1.10.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.6.0",
-    "ruff>=0.15.12",
+    "pre-commit>=4.7.0",
+    "ruff>=0.17.0",
 ]
 
 [build-system]
@@ -33,16 +34,22 @@ app = "revu.runner:run"
 
 [project.optional-dependencies]
 pytest = [
-    "coverage>=7.14.0",
-    "pytest>=9.0.3",
-    "pytest-asyncio>=1.3.0",
+    "coverage>=7.16.2",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "respx>=0.23.1",
 ]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
+
+[tool.ruff.lint]
+# E/W/F перекрывают то, что раньше давали flake8 и autopep8, I — isort,
+# UP — pyupgrade. E501 выключен: длинные строки — это промпты на русском,
+# ломать их конкатенацией нельзя, всё остальное держит ruff-format.
+select = ["E", "W", "F", "I", "UP"]
+ignore = ["E501"]
 
 [tool.pytest.ini_options]
 addopts = [

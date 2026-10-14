@@ -39,6 +39,25 @@ class BaseAIPort(AIProviderProtocol):
         """Return the default comment prompt"""
         return COMMENT_PROMPT
 
+    def _comment_instructions(self) -> str:
+        """Instructions for REVIEW_MODE=comment, extended by SYSTEM_PROMPT."""
+        return self._with_system_prompt(self._get_comment_prompt())
+
+    def _inline_instructions(self, git_provider: str) -> str:
+        """Instructions for REVIEW_MODE=inline, extended by SYSTEM_PROMPT.
+
+        ``SYSTEM_PROMPT`` is prepended rather than substituted: the inline
+        prompt ends with the output schema, which providers such as GigaChat
+        and YandexGPT rely on to emit parseable JSON.
+        """
+        return self._with_system_prompt(self._get_prompt(git_provider))
+
+    def _with_system_prompt(self, prompt: str) -> str:
+        if not self.system_prompt:
+            return prompt
+
+        return f"{self.system_prompt}\n\n{prompt}"
+
     @staticmethod
     def _get_diff_prompt(pr_title: str, pr_body: str | None, diff: str) -> str:
         """Format the diff prompt with provided parameters"""

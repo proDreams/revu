@@ -5,10 +5,7 @@ from revu.application.entities.exceptions.ai_adapters_exceptions import (
 )
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.base import BaseAIPort
-from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import (
-    YandexGPTAdapter,
-    get_yandexgpt_adapter,
-)
+from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import YandexGPTAdapter
 
 
 class YandexGPTPort(BaseAIPort):
@@ -21,10 +18,8 @@ class YandexGPTPort(BaseAIPort):
         return [{"role": "system", "text": system_prompt}, {"role": "user", "text": user_prompt}]
 
     async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
-        system_prompt = self.system_prompt or self._get_comment_prompt()
-
         messages = self._get_messages(
-            system_prompt=system_prompt,
+            system_prompt=self._comment_instructions(),
             user_prompt=self._get_diff_prompt(pr_title, pr_body, diff),
         )
 
@@ -33,10 +28,8 @@ class YandexGPTPort(BaseAIPort):
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
     ) -> ReviewResponseDTO:
-        system_prompt = self.system_prompt or self._get_prompt(git_provider)
-
         messages = self._get_messages(
-            system_prompt=system_prompt,
+            system_prompt=self._inline_instructions(git_provider),
             user_prompt=self._get_diff_prompt(pr_title, pr_body, diff),
         )
 
@@ -56,7 +49,3 @@ class YandexGPTPort(BaseAIPort):
             comments=serialized_output["comments"],
             git_provider=git_provider,
         )
-
-
-def get_yandexgpt_port() -> YandexGPTPort:
-    return YandexGPTPort(adapter=get_yandexgpt_adapter())

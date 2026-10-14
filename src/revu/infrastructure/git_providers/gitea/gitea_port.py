@@ -4,10 +4,7 @@ from urllib.parse import urljoin
 from revu.application.config import get_settings
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
-from revu.infrastructure.http_client.http_client_gateway import (
-    HttpClientGateway,
-    get_http_gateway,
-)
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class GiteaPort(GitProviderProtocol):
@@ -45,7 +42,3 @@ class GiteaPort(GitProviderProtocol):
         }
 
         await self.http_client.post(url=comment_url, headers=self._get_headers(), payload=data)
-
-
-def get_gitea_port() -> GiteaPort:
-    return GiteaPort(http_client=get_http_gateway())

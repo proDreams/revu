@@ -3,10 +3,7 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
 from revu.application.config import get_settings
-from revu.infrastructure.http_client.http_client_gateway import (
-    HttpClientGateway,
-    get_http_gateway,
-)
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class OpenAIAdapter:
@@ -32,7 +29,3 @@ class OpenAIAdapter:
         )
 
         return response
-
-
-def get_openai_adapter() -> OpenAIAdapter:
-    return OpenAIAdapter(http_client=get_http_gateway())

@@ -7,10 +7,7 @@ from openai.types.chat import (
 from pydantic import BaseModel
 
 from revu.application.config import get_settings
-from revu.infrastructure.http_client.http_client_gateway import (
-    HttpClientGateway,
-    get_http_gateway,
-)
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class OpenAICompatibleAdapter:
@@ -37,7 +34,3 @@ class OpenAICompatibleAdapter:
         )
 
         return response
-
-
-def get_openai_compatible_adapter() -> OpenAICompatibleAdapter:
-    return OpenAICompatibleAdapter(http_client=get_http_gateway())

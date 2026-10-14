@@ -83,10 +83,6 @@ class WebhookService:
                 for ln in h:
                     text = ln.value.rstrip("\n")
 
-                    if text.startswith("\\ No newline at end of file"):
-                        out.append(text)
-                        continue
-
                     if ln.is_context:
                         out.append(f"  [{old_ln}->{new_ln}] {text}")
                         old_ln += 1

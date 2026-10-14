@@ -1,6 +1,9 @@
 import pytest
 from dynaconf import Dynaconf
 
+from revu.application.config import Config
+from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
+
 
 @pytest.fixture(autouse=True)
 def settings(monkeypatch):
@@ -21,6 +24,9 @@ def settings(monkeypatch):
             AI_PROVIDER_FOLDER_ID="test-folder-id",
         ),
         REVIEW_MODE="inline",
+        SYSTEM_PROMPT=None,
+        HTTP_CLIENT_TIMEOUT=30.0,
+        HTTP_CLIENT_REQUEST_ATTEMPTS=3,
         LOG_DIR="logs",
         LOG_FILE="test.log",
         LOG_LEVEL="DEBUG",
@@ -28,23 +34,19 @@ def settings(monkeypatch):
         BACKUP_COUNT=5,
     )
 
-    monkeypatch.setattr(
-        "revu.infrastructure.ai_providers.gigachat.gigachat_adapter.get_settings", lambda: fake_settings
-    )
-    monkeypatch.setattr("revu.infrastructure.ai_providers.openai.openai_adapter.get_settings", lambda: fake_settings)
-    monkeypatch.setattr(
-        "revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapter.get_settings",
-        lambda: fake_settings,
-    )
-    monkeypatch.setattr(
-        "revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter.get_settings", lambda: fake_settings
-    )
-    monkeypatch.setattr("revu.presentation.webhooks.di.get_settings", lambda: fake_settings)
-    monkeypatch.setattr("revu.presentation.webhooks.validators.get_settings", lambda: fake_settings)
-    monkeypatch.setattr("revu.infrastructure.git_providers.gitea.gitea_port.get_settings", lambda: fake_settings)
-    monkeypatch.setattr("revu.infrastructure.git_providers.github.github_port.get_settings", lambda: fake_settings)
-    monkeypatch.setattr(
-        "revu.infrastructure.git_providers.bitbucket.bitbucket_port.get_settings", lambda: fake_settings
-    )
+    # Every module goes through get_settings(), which returns Config.settings;
+    # patching it once keeps the whole application on the same fake config
+    # instead of hand-listing the modules that happened to import it.
+    monkeypatch.setattr(Config, "settings", fake_settings)
 
     return fake_settings
+
+
+@pytest.fixture
+async def http_gateway(settings):
+    """A real gateway that is closed after the test instead of leaking."""
+    gateway = HttpClientGateway()
+    try:
+        yield gateway
+    finally:
+        await gateway.aclose()

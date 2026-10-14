@@ -16,7 +16,3 @@ class GigaChatAdapter:
         response = await self._gigachat_client.achat(payload=payload)
 
         return response.choices[0].message.content
-
-
-def get_gigachat_adapter() -> GigaChatAdapter:
-    return GigaChatAdapter()

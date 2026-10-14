@@ -22,7 +22,3 @@ class YandexGPTAdapter:
             return response[0].text
         else:
             raise NoAIResponse("Yandex GPT returned no response")
-
-
-def get_yandexgpt_adapter() -> YandexGPTAdapter:
-    return YandexGPTAdapter()
