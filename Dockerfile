@@ -2,10 +2,12 @@ FROM python:3.13.7-slim
 # Use the official lightweight Python 3.13.7 image as the base.
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends make curl \
+    && apt-get install -y --no-install-recommends make curl git \
     && rm -rf /var/lib/apt/lists/*
-# Update package lists, install `make` and `curl`,
+# Update package lists, install `make`, `curl` and `git`,
 # and remove cached apt data to keep the image small.
+# `git` is what a CI run reads the change with: the checkout is already on disk,
+# so a review in a pipeline asks the forge for nothing.
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy the `uv` and `uvx` executables from the latest official uv container
@@ -28,6 +30,10 @@ RUN curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" \
 
 COPY . /code/
 # Copy the rest of the application source code into the container.
+
+ENV PATH="/code/.venv/bin:$PATH"
+# The console scripts live in the virtual environment `uv sync` created, so `revu`
+# works as a command: `docker run ... revu review` in a pipeline.
 
 EXPOSE 8000
 # The service listens on port 8000; `docker run` without arguments now works

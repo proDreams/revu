@@ -31,18 +31,20 @@
    - [Глубина контекста](#глубина-контекста)
    - [Переход с 1.x на 2.0](#переход-с-1x-на-20)
    - [Обновление](#обновление)
-7. [Разработка](#разработка)
-8. [Автор](#автор)
-9. [Поддержка](#поддержка)
-10. [Лицензия](#лицензия)
+7. [Ревью в пайплайне](#ревью-в-пайплайне)
+8. [Разработка](#разработка)
+9. [Автор](#автор)
+10. [Поддержка](#поддержка)
+11. [Лицензия](#лицензия)
 
 ---
 
 ## О проекте
 
-ReVu — это self-hosted вебхук-сервис для автоматического code review с помощью ИИ.
-Он принимает вебхуки от Git-провайдеров (сейчас поддерживаются GitHub, Gitea, GitLab и Bitbucket), анализирует
-изменения в Pull Request и публикует результат прямо в PR.
+ReVu — это AI-ревью для Pull Request: self-hosted вебхук-сервис либо команда в пайплайне.
+В серверном режиме он принимает вебхуки от Git-провайдеров (сейчас поддерживаются GitHub, Gitea, GitLab
+и Bitbucket) и публикует результат прямо в PR; в режиме пайплайна делает то же самое там, где репозиторий
+уже склонирован, — без входящего адреса, постоянного хоста и отдельной учётной записи для бота.
 
 Один инстанс обслуживает любое количество подключений: можно одновременно ревьюить репозитории на GitHub,
 в корпоративном GitLab и в Gitea, используя общий ИИ-провайдер или отдельный профиль для каждого.
@@ -55,6 +57,11 @@ ReVu — это self-hosted вебхук-сервис для автоматич�
 
 ## Ключевые возможности
 
+* **Два способа запуска**
+    * **Сервер** — вебхук от Git-провайдера, постоянный инстанс, отдельная учётка для бота.
+    * **Пайплайн** — `revu review` прямо в GitHub Actions, GitLab CI или Gitea Actions: тот же образ,
+      тот же промпт, тот же результат, но без входящего адреса и без хоста. См.
+      [Ревью в пайплайне](#ревью-в-пайплайне).
 * **Два режима работы**
     * **Комментарий (`comment`)** — единый подробный отзыв по всему Pull Request.
     * **Инлайн (`inline`)** — точечные комментарии к конкретным изменениям в коде.
@@ -468,6 +475,182 @@ requests=9 truncated=False took=1.83s
 ```bash
 sudo docker compose pull && sudo docker compose up -d
 ```
+
+## Ревью в пайплайне
+
+Серверный режим требует входящего HTTPS-адреса, постоянно работающего хоста и отдельной учётной записи
+для бота. Если этого нет или не хочется — ReVu запускается прямо в пайплайне: код уже склонирован,
+событие само сообщает, какой это PR, а токен уже выдан job'у.
+
+Тот же образ, другая команда: `revu review` вместо сервера.
+
+### GitHub Actions
+
+В контейнере job'а нельзя использовать `actions/checkout` — это JS-экшен, которому нужен Node, а в образе
+ReVu его нет. Поэтому чекаут делает обычный `actions/checkout`, а образ запускается шагом `docker run`:
+
+```yaml
+name: ReVu
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:            # экономия: документация ревью не требует
+      - "**/*.md"
+      - "docs/**"
+
+concurrency:                 # новый push отменяет предыдущее ревью
+  group: revu-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # без этого GITHUB_TOKEN не сможет комментировать
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # нужен общий предок: иначе сравнивать не с чем
+      - name: ReVu
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_PROVIDER_API_KEY: ${{ secrets.REVU_AI_KEY }}
+          AI_PROVIDER_MODEL: gpt-4o-mini
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
+            ghcr.io/prodreams/revu:2.4.0 review
+```
+
+### GitLab CI
+
+Контейнер здесь родная модель, а `CI_JOB_TOKEN` доступен сразу:
+
+```yaml
+revu:
+  stage: test
+  image: ghcr.io/prodreams/revu:2.4.0
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GIT_DEPTH: 0                      # нужна история до общего предка
+    AI_PROVIDER_API_KEY: $REVU_AI_KEY
+    AI_PROVIDER_MODEL: gpt-4o-mini
+    # GIT_PROVIDER_USER_TOKEN: $REVU_PROJECT_TOKEN   # чтобы писать комментарий в MR
+  script:
+    - revu review
+```
+
+Про токен: `CI_JOB_TOKEN` умеет **читать** merge request и его заметки, но не писать их. Поэтому либо
+задайте `GIT_PROVIDER_USER_TOKEN` (project access token с правом `api`) — и ревью уйдёт комментарием
+в MR, либо не задавайте: ревью напечатается в лог пайплайна, и это полноценный сценарий, а не деградация.
+
+### Gitea Actions
+
+Формат тот же, что у GitHub, отличается расположение воркфлоу и то, что хостинг лучше назвать явно:
+Gitea Actions повторяет переменные GitHub, и по ним Gitea не всегда отличим от github.com.
+
+```yaml
+# .gitea/workflows/revu.yaml
+name: ReVu
+
+on:
+  pull_request:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: ReVu
+        env:
+          GIT_PROVIDER: gitea
+          GIT_PROVIDER_URL: https://git.example.com
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_PROVIDER_API_KEY: ${{ secrets.REVU_AI_KEY }}
+          AI_PROVIDER_MODEL: gpt-4o-mini
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
+            -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
+            ghcr.io/prodreams/revu:2.4.0 review
+```
+
+### Переменные окружения
+
+Хостинг ReVu определяет сам по переменным `GITHUB_ACTIONS`, `GITLAB_CI` и `GITEA_ACTIONS`, а репозиторий,
+номер PR и ревизии берёт из переменных платформы (`GITHUB_EVENT_PATH`, `CI_MERGE_REQUEST_IID`,
+`CI_MERGE_REQUEST_DIFF_BASE_SHA` и им подобных). Явно задать нужно только ключ ИИ.
+
+| Переменная | Что задаёт |
+|---|---|
+| `AI_PROVIDER` | вендор: `openai` (по умолчанию), `openai_compatible`, `gigachat`, `yandexgpt` |
+| `AI_PROVIDER_API_KEY` | ключ провайдера (обязательно) |
+| `AI_PROVIDER_MODEL` | модель (обязательно) |
+| `AI_PROVIDER_BASE_URL` | свой endpoint для `openai_compatible` |
+| `AI_PROVIDER_SCOPE`, `AI_PROVIDER_FOLDER_ID` | для GigaChat и YandexGPT |
+| `GIT_PROVIDER` | хостинг: `github`, `gitea`, `gitlab`, `bitbucket` |
+| `GIT_PROVIDER_URL` | адрес self-hosted хостинга |
+| `GIT_PROVIDER_USER_TOKEN` | токен для чтения и комментирования; иначе берётся токен платформы |
+| `REVIEW_MODE` | `inline` (по умолчанию) или `comment` |
+| `CONTEXT_DEPTH`, `CONTEXT_MAX_FILES`, `CONTEXT_MAX_CHARS` | глубина контекста и её бюджеты |
+| `INCLUDE_PR_DISCUSSION` | передавать ли ИИ комментарии других участников PR |
+| `LOG_LEVEL` | `DEBUG`, `INFO` (по умолчанию), `WARNING`, `ERROR` |
+
+Имена те же, что в `settings.yaml`, поэтому знание файла переносится без изменений. Валидация тоже общая:
+опечатка в `REVIEW_MODE` останавливает job с тем же сообщением, с каким остановила бы сервер.
+
+### Флаги
+
+| Флаг | Что делает |
+|---|---|
+| `--diff-source git\|api\|file` | откуда брать изменения: `git` — из чекаута (по умолчанию), `api` — через хостинг, `file` — из `--diff-file` |
+| `--diff-file PATH` | готовый diff; включает `--diff-source file` |
+| `--base`, `--head` | ревизии для сравнения, если платформа их не сообщила |
+| `--repo`, `--pr` | репозиторий и номер PR — для запуска вне CI |
+| `--provider` | хостинг; вне CI обязателен |
+| `--depth flat\|deep` | переопределяет `CONTEXT_DEPTH` |
+| `--comment` / `--stdout` | комментарий в PR или печать в лог; по умолчанию — комментарий, если токен это позволяет |
+| `--format text\|json` | текст (по умолчанию) или один JSON-объект на ревью |
+| `--fail-on never\|error\|findings` | когда ронять job: никогда (по умолчанию), если ревью не состоялось, если есть замечания |
+
+Коды возврата: `0` — всё хорошо, `1` — сработал `--fail-on findings`, `2` — ревью не удалось запустить
+(в том числе из-за ошибки в аргументах).
+
+### Локальный запуск
+
+Тот же CLI работает и на машине разработчика — без CI, вебхука и сервера:
+
+```bash
+export AI_PROVIDER_API_KEY=...
+export AI_PROVIDER_MODEL=gpt-4o-mini
+export GIT_PROVIDER=github
+export GIT_PROVIDER_USER_TOKEN=...
+
+revu review --base origin/main --head HEAD --stdout
+```
+
+### Что стоит знать
+
+- **`fetch-depth: 0` обязателен.** При shallow-клоне общего предка нет, `git diff base...head` вернёт
+  пустоту, и ревью выглядело бы так, будто PR ничего не меняет. ReVu это ловит и останавливается
+  с подсказкой, а не ревьюит пустоту.
+- **В `deep` контекст бесплатен.** Файлы читаются с диска, дерево — одной командой `git ls-tree`,
+  запросов к хостингу нет вовсе; на сервере тот же режим стоил бы до 12 запросов.
+- **PR из форков не поддерживаются.** Ревью запускается для PR внутри репозитория: у PR из форка нет
+  ни секретов, ни права комментировать, а `pull_request_target` требует отдельной осторожности.
+- **Сервер и пайплайн на одном репозитории — два ревью на push.** Выберите что-то одно.
+- **`--fail-on` по умолчанию `never`:** пайплайн не краснеет из-за мнения модели. Нужно наоборот —
+  `--fail-on error` (ревью не состоялось) или `--fail-on findings` (есть замечания).
+- **Код репозитория не исполняется.** Ревью читает файлы и разбирает их парсером: ни `make`,
+  ни `npm install`, ни `pip install` из ревьюируемого дерева не запускаются.
 
 ## Разработка
 

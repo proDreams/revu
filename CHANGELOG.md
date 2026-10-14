@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-10-14
+
+### Added
+
+- **Ревью прямо в пайплайне.** `revu review` — та же проверка, тот же промпт, но без
+  входящего адреса, постоянного хоста и отдельной учётной записи для бота: код уже
+  склонирован, событие само сообщает, какой это PR, а токен уже выдан job'у.
+  Поддерживаются GitHub Actions, GitLab CI и Gitea Actions; хостинг, репозиторий, номер
+  PR и ревизии определяются по переменным платформы, поэтому в типичном случае команда
+  запускается вообще без аргументов.
+    - Источник изменений: локальный чекаут (по умолчанию), API хостинга или готовый diff
+      из файла. Локальное чтение не тратит ни одного запроса, и `CONTEXT_DEPTH: deep`
+      в пайплайне бесплатен: файлы уже на диске, дерево — одна команда `git`.
+    - Результат: комментарий в PR/MR, если токен это позволяет, либо лог пайплайна, либо
+      один JSON-объект (`--format json`).
+    - `--fail-on never|error|findings` (по умолчанию `never`) решает, что job делает с
+      результатом: гейт — это выбор, а не поведение по умолчанию.
+    - Доступны флаги `--diff-source`, `--diff-file`, `--base`, `--head`, `--repo`, `--pr`,
+      `--provider`, `--depth`, `--comment`/`--stdout`, `--format`, `--fail-on`.
+- Конфигурация для пайплайна собирается из переменных окружения через тот же парсер, что
+  и `settings.yaml`: имена ключей совпадают, проверки и сообщения об ошибках тоже, а сам
+  файл настроек в CI не нужен.
+- `revu serve` — серверный режим под той же командой; `app` и `docker-compose.yaml`
+  продолжают работать как раньше.
+- В образ добавлен `git` (нужен для чтения локального чекаута), а виртуальное окружение
+  попало в `PATH`, чтобы `revu` работал как команда.
+
+### Changed
+
+- `GitProviderProtocol` разделён на `GitReaderProtocol` (diff, файлы, дерево, прошлые
+  комментарии) и `CommentPublisherProtocol` (комментарий, инлайн-ревью). Хост-порты
+  реализуют оба, поэтому серверный режим не изменился, а `ContextBuilder` теперь просит
+  только читающую половину — ту, которой он и пользовался.
+- Сценарий ревью вынесен в `ReviewRunner`, который принимает источник и приёмник
+  аргументами и возвращает `ReviewOutcome`. `ReviewService` стал тем, что делает ревью
+  вебхук-ревью: держит бюджет параллелизма подключения и превращает событие в запрос.
+
 ## [2.3.0] - 2026-10-14
 
 ### Added
@@ -210,6 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/proDreams/revu/compare/2.2.0...2.3.0
 [2.2.0]: https://github.com/proDreams/revu/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/proDreams/revu/compare/2.0.0...2.1.0
