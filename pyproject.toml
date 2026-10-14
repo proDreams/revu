@@ -1,6 +1,6 @@
 [project]
 name = "revu"
-version = "2.2.0"
+version = "2.3.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
@@ -17,6 +17,40 @@ dependencies = [
     "yandex-ai-studio-sdk>=0.22.1",
     "uvicorn>=0.54.0",
     "dishka>=1.10.1",
+    # One wheel per grammar instead of the aggregated `tree-sitter-language-pack`:
+    # the pack downloads grammars at runtime into a cache directory, which breaks
+    # in closed networks and makes the container write state on the first parse.
+    "tree-sitter",
+    "tree-sitter-bash",
+    "tree-sitter-c",
+    "tree-sitter-c-sharp",
+    "tree-sitter-cpp",
+    "tree-sitter-css",
+    "tree-sitter-dart",
+    "tree-sitter-dockerfile",
+    "tree-sitter-elixir",
+    "tree-sitter-go",
+    "tree-sitter-haskell",
+    "tree-sitter-hcl",
+    "tree-sitter-html",
+    "tree-sitter-java",
+    "tree-sitter-javascript",
+    "tree-sitter-json",
+    "tree-sitter-kotlin",
+    "tree-sitter-lua",
+    "tree-sitter-make",
+    "tree-sitter-ocaml",
+    "tree-sitter-perl",
+    "tree-sitter-php",
+    "tree-sitter-python",
+    "tree-sitter-ruby",
+    "tree-sitter-rust",
+    "tree-sitter-scala",
+    "tree-sitter-sql",
+    "tree-sitter-swift",
+    "tree-sitter-typescript",
+    "tree-sitter-yaml",
+    "tree-sitter-zig",
 ]
 
 [dependency-groups]

@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
+from revu.application.entities.enums.context_depth_enums import ContextDepthEnum
 from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.exceptions.base import CoreException
@@ -49,6 +50,14 @@ DEFAULT_NOTIFY_ON_FAILURE = True
 # re-review. On by default, because that is what makes a follow-up useful; turn it
 # off on a connection whose discussion must not leave the network.
 DEFAULT_INCLUDE_PR_DISCUSSION = True
+# How much surrounding code a review reads. Flat by default: deep costs more tokens,
+# more requests and sends whole files to the AI provider, so it is a decision the
+# operator makes rather than a surprise.
+DEFAULT_CONTEXT_DEPTH = ContextDepthEnum.FLAT
+# Budgets for the additional context. Starting points, meant to be tuned from the
+# per-review metrics the service logs.
+DEFAULT_CONTEXT_MAX_FILES = 12
+DEFAULT_CONTEXT_MAX_CHARS = 40_000
 DEFAULT_HTTP_TIMEOUT = 30.0
 DEFAULT_HTTP_ATTEMPTS = 3
 DEFAULT_HTTP_BACKOFF = 0.5
@@ -117,6 +126,9 @@ class GitConnectionConfig:
     max_concurrent_reviews: int
     notify_on_failure: bool = DEFAULT_NOTIFY_ON_FAILURE
     include_pr_discussion: bool = DEFAULT_INCLUDE_PR_DISCUSSION
+    context_depth: ContextDepthEnum = DEFAULT_CONTEXT_DEPTH
+    context_max_files: int = DEFAULT_CONTEXT_MAX_FILES
+    context_max_chars: int = DEFAULT_CONTEXT_MAX_CHARS
     base_url: str | None = None
     reviewer: str | None = None
     system_prompt: str | None = None

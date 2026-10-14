@@ -3,6 +3,9 @@ from unittest.mock import ANY, AsyncMock
 
 import pytest
 
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.review_marker import mark
 from revu.domain.entities.dto.ai_provider_dto import (
     GitHubReviewCommentDTO,
@@ -180,3 +183,54 @@ async def test_fetch_review_context_skips_empty_bodies():
 
 async def test_fetch_review_context_is_none_when_nobody_wrote_anything():
     assert await _port(_context_client()).fetch_review_context(repo="owner/repo", index=7) is None
+
+
+# ── reading files for the deep context ─────────────────────────────────────
+
+TREE = {"tree": [{"path": "src/app.py", "type": "blob"}, {"path": "src", "type": "tree"}]}
+
+
+async def test_fetch_file_asks_for_the_raw_media_type():
+    http_client = AsyncMock()
+    http_client.get.return_value = b"content of app.py"
+
+    text = await _port(http_client).fetch_file(repo="owner/repo", path="src/app.py", revision="abc123")
+
+    assert text == "content of app.py"
+    request = http_client.get.await_args.kwargs
+    assert request["url"] == "https://api.github.com/repos/owner/repo/contents/src/app.py?ref=abc123"
+    assert request["headers"]["Accept"] == "application/vnd.github.raw"
+    assert request["expect_json"] is False
+
+
+async def test_fetch_file_returns_none_when_the_path_is_not_there():
+    """A probed path is allowed to be absent; anything else must surface."""
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 404 from x", status_code=404)
+
+    assert await _port(http_client).fetch_file(repo="owner/repo", path="gone.py", revision="abc123") is None
+
+
+async def test_fetch_file_raises_anything_that_is_not_a_missing_path():
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 403 from x", status_code=403)
+
+    with pytest.raises(HttpGatewayError):
+        await _port(http_client).fetch_file(repo="owner/repo", path="src/app.py", revision="abc123")
+
+
+async def test_list_files_returns_blobs_only():
+    http_client = AsyncMock()
+    http_client.get.return_value = TREE
+
+    paths = await _port(http_client).list_files(repo="owner/repo", revision="abc123")
+
+    assert paths == ("src/app.py",)
+    assert http_client.get.await_args.kwargs["url"].endswith("git/trees/abc123?recursive=1")
+
+
+async def test_list_files_survives_an_unexpected_payload():
+    http_client = AsyncMock()
+    http_client.get.return_value = {"message": "Not Found"}
+
+    assert await _port(http_client).list_files(repo="owner/repo", revision="abc123") == ()

@@ -1,6 +1,9 @@
 from urllib.parse import urljoin
 
 from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.review_marker import clean, is_marked
 from revu.domain.entities.dto.ai_provider_dto import (
     BitbucketReviewCommentDTO,
@@ -15,6 +18,10 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 )
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.git_providers.bitbucket.helpers import json_diff_to_unified
+from revu.infrastructure.git_providers.repository_files import (
+    MAX_TREE_ENTRIES,
+    decode,
+)
 from revu.infrastructure.git_providers.review_context import (
     CONTEXT_PAGE_SIZE,
     MAX_CONTEXT_PAGES,
@@ -72,6 +79,54 @@ class BitbucketPort(GitProviderProtocol):
         return json_diff_to_unified({"diffs": file_diffs})
 
     MAX_REPLY_DEPTH = 5
+
+    async def fetch_file(self, repo: str, path: str, revision: str) -> str | None:
+        """The file's text at a revision, or ``None`` when the path is not there."""
+        try:
+            content = await self.http_client.get(
+                url=self._url(f"rest/api/1.0/projects/{repo}/raw/{path}?at={revision}"),
+                headers=self._get_headers(),
+                expect_json=False,
+            )
+        except HttpGatewayError as exc:
+            if exc.status_code == 404:
+                return None
+
+            raise
+
+        return decode(content)
+
+    async def list_files(self, repo: str, revision: str) -> tuple[str, ...]:
+        """Every file of the repository; Bitbucket lists the tree recursively."""
+        base = f"rest/api/1.0/projects/{repo}/files"
+        paths: list[str] = []
+        start = 0
+
+        for _ in range(MAX_CONTEXT_PAGES):
+            url = self._url(f"{base}?at={revision}&limit={CONTEXT_PAGE_SIZE}")
+            if start:
+                url = f"{url}&start={start}"
+
+            page = await self.http_client.get(url=url, headers=self._get_headers())
+
+            if not isinstance(page, dict):
+                break
+
+            paths.extend(path for path in page.get("files") or [] if isinstance(path, str))
+
+            next_page_start = page.get("nextPageStart")
+
+            if (
+                page.get("isLastPage", True)
+                or not isinstance(next_page_start, int)
+                or next_page_start <= start
+                or len(paths) >= MAX_TREE_ENTRIES
+            ):
+                break
+
+            start = next_page_start
+
+        return tuple(paths[:MAX_TREE_ENTRIES])
 
     def _flatten(self, raw: dict, depth: int = 0) -> list[dict]:
         """A Bitbucket thread keeps its replies nested; the prompt wants them flat."""

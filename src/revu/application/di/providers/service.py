@@ -1,5 +1,6 @@
 from dishka import Provider, Scope, provide
 
+from revu.application.services.context_builder import ContextBuilder
 from revu.application.services.review_service import ReviewService
 
 
@@ -13,5 +14,5 @@ class ReviewServiceProvider(Provider):
     scope = Scope.APP
 
     @provide
-    def review_service(self) -> ReviewService:
-        return ReviewService()
+    def review_service(self, context_builder: ContextBuilder) -> ReviewService:
+        return ReviewService(context_builder=context_builder)

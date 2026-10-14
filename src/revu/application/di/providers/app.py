@@ -4,7 +4,10 @@ from dishka import Provider, Scope, provide
 
 from revu.application.config import load_settings
 from revu.application.entities.config import Settings
+from revu.application.services.context_builder import ContextBuilder
 from revu.application.services.revision_store import ReviewedRevisionStore
+from revu.domain.protocols.code_parser_protocol import CodeParserProtocol
+from revu.infrastructure.code_analysis.tree_sitter_parser import TreeSitterCodeParser
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
@@ -30,6 +33,15 @@ class AppProvider(Provider):
             yield gateway
         finally:
             await gateway.aclose()
+
+    @provide
+    def code_parser(self) -> CodeParserProtocol:
+        """One parser for the whole application: it holds only cached grammars."""
+        return TreeSitterCodeParser()
+
+    @provide
+    def context_builder(self, parser: CodeParserProtocol) -> ContextBuilder:
+        return ContextBuilder(parser=parser)
 
     @provide
     def reviewed_revisions(self) -> ReviewedRevisionStore:

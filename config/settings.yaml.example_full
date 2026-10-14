@@ -23,6 +23,22 @@ NOTIFY_ON_FAILURE: true
 # always included, because they are its own output rather than new data. Set to
 # false when the discussion in a repository must not leave your network.
 INCLUDE_PR_DISCUSSION: true
+# CONTEXT_DEPTH — how much code the model gets to see.
+#   "flat" (default) — the diff and the comments, nothing else.
+#   "deep"           — additionally the full bodies of the changed symbols, the
+#                      signatures of what that code calls, and the tests next to it.
+# Deep reads repository files and hands them to the AI provider as they are, so it
+# is off by default. The diff is never trimmed in either mode.
+CONTEXT_DEPTH: "flat"
+# CONTEXT_MAX_FILES — how many ADDITIONAL files deep mode may fetch: dependency
+# modules and test files. Changed files are not counted here, so a pull request
+# touching more files than this still shows every change.
+CONTEXT_MAX_FILES: 12
+# CONTEXT_MAX_CHARS — the total budget for everything deep mode adds, in characters
+# (~4 characters per token). When it runs out the context is cut and the log says
+# so; the diff stays complete. Tune it from the "review context for connection ..."
+# line each review writes.
+CONTEXT_MAX_CHARS: 40000
 
 # ── AI profiles ──────────────────────────────────────────────────────────────
 # Named AI settings. Connections without an explicit AI_PROVIDER use
@@ -84,6 +100,9 @@ GIT_PROVIDERS:
     MAX_CONCURRENT_REVIEWS: 1
     SYSTEM_PROMPT: "This repository is a legacy service: mention backwards compatibility."
     INCLUDE_PR_DISCUSSION: false
+    # Read the surrounding code here too, with a bigger budget than the default.
+    CONTEXT_DEPTH: "deep"
+    CONTEXT_MAX_CHARS: 80000
 
   # https://<your-revu-host>/webhooks/gl-internal
   gl-internal:

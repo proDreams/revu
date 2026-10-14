@@ -23,6 +23,9 @@ from revu.application.entities.config import (
     CONNECTION_KEY_RE,
     DEFAULT_APP_HOST,
     DEFAULT_APP_PORT,
+    DEFAULT_CONTEXT_DEPTH,
+    DEFAULT_CONTEXT_MAX_CHARS,
+    DEFAULT_CONTEXT_MAX_FILES,
     DEFAULT_HTTP_ATTEMPTS,
     DEFAULT_HTTP_BACKOFF,
     DEFAULT_HTTP_TIMEOUT,
@@ -47,6 +50,7 @@ from revu.application.entities.config import (
     Settings,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
+from revu.application.entities.enums.context_depth_enums import ContextDepthEnum
 from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.logger.project_logger import ProjectLogger
@@ -177,6 +181,9 @@ def _parse_git_connections(
     default_max_concurrent: int,
     default_notify_on_failure: bool,
     default_include_pr_discussion: bool,
+    default_context_depth: ContextDepthEnum,
+    default_context_max_files: int,
+    default_context_max_chars: int,
 ) -> dict[str, GitConnectionConfig]:
     section = raw.get("GIT_PROVIDERS")
     if not section:
@@ -227,6 +234,11 @@ def _parse_git_connections(
             max_concurrent_reviews=_positive_int(body, path, "MAX_CONCURRENT_REVIEWS", default_max_concurrent),
             notify_on_failure=_boolean(body, path, "NOTIFY_ON_FAILURE", default_notify_on_failure),
             include_pr_discussion=_boolean(body, path, "INCLUDE_PR_DISCUSSION", default_include_pr_discussion),
+            context_depth=_enum(
+                body, path, "CONTEXT_DEPTH", ContextDepthEnum, tuple(ContextDepthEnum), default=default_context_depth
+            ),
+            context_max_files=_positive_int(body, path, "CONTEXT_MAX_FILES", default_context_max_files),
+            context_max_chars=_positive_int(body, path, "CONTEXT_MAX_CHARS", default_context_max_chars),
         )
 
     return connections
@@ -267,6 +279,11 @@ def _load_settings(raw: Mapping[str, Any]) -> Settings:
         default_max_concurrent=int(raw.get("MAX_CONCURRENT_REVIEWS") or DEFAULT_MAX_CONCURRENT_REVIEWS),
         default_notify_on_failure=_boolean(raw, "config", "NOTIFY_ON_FAILURE", DEFAULT_NOTIFY_ON_FAILURE),
         default_include_pr_discussion=_boolean(raw, "config", "INCLUDE_PR_DISCUSSION", DEFAULT_INCLUDE_PR_DISCUSSION),
+        default_context_depth=_enum(
+            raw, "config", "CONTEXT_DEPTH", ContextDepthEnum, tuple(ContextDepthEnum), default=DEFAULT_CONTEXT_DEPTH
+        ),
+        default_context_max_files=_positive_int(raw, "config", "CONTEXT_MAX_FILES", DEFAULT_CONTEXT_MAX_FILES),
+        default_context_max_chars=_positive_int(raw, "config", "CONTEXT_MAX_CHARS", DEFAULT_CONTEXT_MAX_CHARS),
     )
 
     return Settings(

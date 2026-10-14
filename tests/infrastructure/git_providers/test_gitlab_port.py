@@ -2,6 +2,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.exceptions.provider_exceptions import (
     GitProviderException,
 )
@@ -19,6 +22,7 @@ from revu.infrastructure.git_providers.gitlab.gitlab_port import (
     DIFF_PAGE_SIZE,
     GitlabPort,
 )
+from revu.infrastructure.git_providers.review_context import CONTEXT_PAGE_SIZE
 from tests.conftest import make_connection
 
 pytestmark = pytest.mark.unit
@@ -321,3 +325,48 @@ async def test_fetch_review_context_keeps_the_diff_position():
 
 async def test_fetch_review_context_is_none_without_notes():
     assert await _port(_context_client([])).fetch_review_context(repo="group/project", index=11) is None
+
+
+# ── reading files for the deep context ─────────────────────────────────────
+
+
+async def test_fetch_file_encodes_the_path():
+    http_client = AsyncMock()
+    http_client.get.return_value = b"content"
+
+    text = await _port(http_client).fetch_file(repo="group/project", path="src/deep/app.py", revision="abc")
+
+    assert text == "content"
+    assert http_client.get.await_args.kwargs["url"] == (
+        f"{GITLAB_URL}/api/v4/projects/group%2Fproject/repository/files/src%2Fdeep%2Fapp.py/raw?ref=abc"
+    )
+
+
+async def test_fetch_file_returns_none_for_a_missing_path():
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 404", status_code=404)
+
+    assert await _port(http_client).fetch_file(repo="group/project", path="gone.py", revision="abc") is None
+
+
+async def test_list_files_walks_the_paginated_tree():
+    http_client = AsyncMock()
+    http_client.get.side_effect = [
+        [{"path": f"f{index}.py", "type": "blob"} for index in range(CONTEXT_PAGE_SIZE)],
+        [{"path": "last.py", "type": "blob"}, {"path": "dir", "type": "tree"}],
+    ]
+
+    paths = await _port(http_client).list_files(repo="group/project", revision="abc")
+
+    assert len(paths) == CONTEXT_PAGE_SIZE + 1
+    assert paths[-1] == "last.py"
+    assert http_client.get.await_count == 2
+
+
+async def test_fetch_file_raises_anything_that_is_not_a_missing_path():
+    """A refused request must stay visible; only 404 is an answer."""
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 403", status_code=403)
+
+    with pytest.raises(HttpGatewayError):
+        await _port(http_client).fetch_file(repo="group/project", path="app.py", revision="abc")

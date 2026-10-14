@@ -41,6 +41,12 @@ class GithubPort(GithubCompatibleComments, GitProviderProtocol):
 
         return content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
 
+    def _file_request(self, repo: str, path: str, revision: str) -> tuple[str, dict[str, str]]:
+        headers = self._get_headers()
+        headers["Accept"] = "application/vnd.github.raw"
+
+        return self._url(f"repos/{repo}/contents/{path}?ref={revision}"), headers
+
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
         data = {"body": review}
 

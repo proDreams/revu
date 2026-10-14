@@ -5,6 +5,52 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-14
+
+### Added
+
+- **`CONTEXT_DEPTH`**: `flat` (default) reviews the diff, `deep` also reads the
+  surrounding code —
+    - the full body of every symbol the changed lines fall into, instead of the
+      three lines of context a unified diff carries;
+    - the signatures (and docstrings) of the imported names the changed code
+      actually mentions, so a contract is read rather than guessed;
+    - the tests that cover the changed file, found by path and name.
+- `CONTEXT_MAX_FILES` (12) and `CONTEXT_MAX_CHARS` (40 000), globally and per
+  connection. They bound *additional* files and the total size of what is added;
+  the diff is never trimmed, and a changed file is never dropped because of them.
+- One line per review saying what the context cost: files and characters of the
+  diff against entries and characters of the context, with a token estimate, the
+  number of requests, whether a budget cut the gathering, and how long it took.
+  This is what the budgets are meant to be tuned from.
+- Code parsing through tree-sitter, with one grammar wheel per language (30 of
+  them: Python, JavaScript, TypeScript, Go, Java, Kotlin, Ruby, Rust, C#, PHP, C,
+  C++, Swift, Scala, Elixir, Lua, Perl, Dart, Bash, SQL, HTML, CSS, HCL, YAML,
+  JSON, Make, Zig, Haskell, OCaml, Dockerfile). The aggregated
+  `tree-sitter-language-pack` was rejected on purpose: it downloads grammars at
+  runtime into a cache directory, so it breaks in a closed network and makes the
+  container write state.
+- A language with no grammar still gets deep context: the changed file is included
+  whole. Precision needs a grammar; having context at all does not.
+
+### Changed
+
+- The prompt of both review modes gained a section for the surrounding code, inside
+  the same guarded data block as the diff, and states that inline comments may only
+  target lines from the diff — code that this pull request did not change is
+  background, not review material.
+- `HttpGatewayError` now carries the HTTP status code, so "this file is not there"
+  can be told from "the host refused us" without parsing a message.
+
+### Security
+
+- Paths that must never reach an AI provider are skipped before any request:
+  `.env*`, keys, credential and secret files, and generated or vendored trees
+  (`node_modules/`, `vendor/`, `dist/`, `build/`), minified bundles and lock files.
+  Files past 200 000 characters are ignored.
+- Deep context is gathered at the revision of the pull request only, and any
+  failure degrades to a flat review with the reason in the log.
+
 ## [2.2.0] - 2026-10-14
 
 ### Added
@@ -164,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.3.0]: https://github.com/proDreams/revu/compare/2.2.0...2.3.0
 [2.2.0]: https://github.com/proDreams/revu/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/proDreams/revu/compare/2.0.0...2.1.0
 [2.0.0]: https://github.com/proDreams/revu/compare/1.7.0...2.0.0

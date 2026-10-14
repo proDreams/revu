@@ -2,6 +2,9 @@ from unittest.mock import ANY, AsyncMock
 
 import pytest
 
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.review_marker import mark
 from revu.domain.entities.dto.ai_provider_dto import (
     BitbucketReviewCommentDTO,
@@ -267,3 +270,54 @@ async def test_fetch_review_context_stops_at_the_reply_depth_limit():
 
     assert context is not None
     assert len(context.comments) == 6  # the root plus five levels of replies
+
+
+# ── reading files for the deep context ─────────────────────────────────────
+
+
+async def test_fetch_file_reads_the_raw_endpoint():
+    http_client = AsyncMock()
+    http_client.get.return_value = b"content"
+
+    text = await _port(http_client).fetch_file(repo="MYPROJ/repo", path="src/app.py", revision="abc")
+
+    assert text == "content"
+    assert http_client.get.await_args.kwargs["url"] == (
+        f"{BITBUCKET_URL}/rest/api/1.0/projects/MYPROJ/repo/raw/src/app.py?at=abc"
+    )
+
+
+async def test_fetch_file_returns_none_for_a_missing_path():
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 404", status_code=404)
+
+    assert await _port(http_client).fetch_file(repo="MYPROJ/repo", path="gone.py", revision="abc") is None
+
+
+async def test_list_files_walks_the_pages():
+    http_client = AsyncMock()
+    http_client.get.side_effect = [
+        {"files": ["a.py"], "isLastPage": False, "nextPageStart": 1},
+        {"files": ["b.py"], "isLastPage": True},
+    ]
+
+    paths = await _port(http_client).list_files(repo="MYPROJ/repo", revision="abc")
+
+    assert paths == ("a.py", "b.py")
+    assert http_client.get.await_count == 2
+
+
+async def test_list_files_survives_an_unexpected_payload():
+    http_client = AsyncMock()
+    http_client.get.return_value = ["nonsense"]
+
+    assert await _port(http_client).list_files(repo="MYPROJ/repo", revision="abc") == ()
+
+
+async def test_fetch_file_raises_anything_that_is_not_a_missing_path():
+    """A refused request must stay visible; only 404 is an answer."""
+    http_client = AsyncMock()
+    http_client.get.side_effect = HttpGatewayError("HTTP 403", status_code=403)
+
+    with pytest.raises(HttpGatewayError):
+        await _port(http_client).fetch_file(repo="MYPROJ/repo", path="app.py", revision="abc")

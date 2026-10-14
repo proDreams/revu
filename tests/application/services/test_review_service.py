@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from revu.application.entities.enums.context_depth_enums import ContextDepthEnum
 from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
@@ -13,6 +14,11 @@ from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.ai_provider_dto import (
     PreviousFindingDTO,
     ReviewResponseDTO,
+)
+from revu.domain.entities.dto.code_context_dto import (
+    CodeContextDTO,
+    ContextEntryDTO,
+    ContextStatsDTO,
 )
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.dto.review_context_dto import (
@@ -61,13 +67,25 @@ def ai_port():
 def git_port():
     port = AsyncMock()
     port.fetch_diff.return_value = DIFF
+    # No earlier review unless a test says otherwise: an unstubbed AsyncMock would
+    # answer with a truthy MagicMock and fake a re-review.
+    port.fetch_review_context.return_value = None
 
     return port
 
 
 @pytest.fixture
-def service():
-    return ReviewService()
+def context_builder():
+    """A builder whose gathering is stubbed: the review wiring is what matters here."""
+    builder = AsyncMock()
+    builder.build.return_value = CodeContextDTO()
+
+    return builder
+
+
+@pytest.fixture
+def service(context_builder):
+    return ReviewService(context_builder=context_builder)
 
 
 def make_tenant(ai_port, git_port, **connection) -> TenantContext:
@@ -479,3 +497,83 @@ async def test_a_signed_review_is_recognised_on_the_next_run(service, ai_port, g
     assert context is not None
     assert context.findings[0].body.startswith("🤖 ReVu: первое")
     assert "повторное ревью" in git_port.send_inline.await_args.kwargs["review"].general_comment
+
+
+async def test_the_review_asks_for_the_configured_context_depth(service, ai_port, git_port, context_builder):
+    """The connection decides the depth and the budgets; the request carries them."""
+    tenant = make_tenant(
+        ai_port,
+        git_port,
+        review_mode=ReviewModeEnum.INLINE,
+        context_depth=ContextDepthEnum.DEEP,
+        context_max_files=4,
+        context_max_chars=1234,
+    )
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    request = context_builder.build.await_args.args[1]
+    assert request.repo == "owner/repo"
+    assert request.revision == COMMIT_SHA
+    assert request.diff == DIFF
+    assert request.depth is ContextDepthEnum.DEEP
+    assert (request.max_extra_files, request.max_chars) == (4, 1234)
+
+
+async def test_the_gathered_context_reaches_the_ai_port(service, ai_port, git_port, context_builder):
+    context_builder.build.return_value = CodeContextDTO(
+        entries=(ContextEntryDTO(kind="symbol", path="app.py", title="run (строки 1-5)", text="def run(): pass"),),
+        stats=ContextStatsDTO(depth="deep", changed_files=1, chars=20),
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    task = ai_port.get_inline_response.await_args.args[0]
+    assert task.code_context is not None
+    assert task.code_context.entries[0].text == "def run(): pass"
+
+
+async def test_every_review_logs_what_the_context_cost(service, ai_port, git_port, context_builder, caplog):
+    """This line is how the budgets get tuned against real runs."""
+    context_builder.build.return_value = CodeContextDTO(
+        entries=(ContextEntryDTO(kind="symbol", path="app.py", title="run", text="x" * 400),),
+        stats=ContextStatsDTO(
+            depth="deep",
+            changed_files=2,
+            body_files=1,
+            extra_files=3,
+            symbols=1,
+            signatures=2,
+            tests=4,
+            unparsed_files=1,
+            chars=400,
+            requests=7,
+            seconds=1.25,
+        ),
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    with caplog.at_level("INFO"):
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert "review context for connection gh-main, owner/repo#7" in caplog.text
+    assert "depth=deep" in caplog.text
+    assert f"diff=2 files/{len(DIFF)} chars" in caplog.text
+    assert "context=1 entries/400 chars" in caplog.text
+    assert "bodies=1 extra_files=3 signatures=2 tests=4 unparsed=1" in caplog.text
+    assert "requests=7 truncated=False took=1.25s" in caplog.text
+
+
+async def test_a_degraded_context_says_why_in_the_log(service, ai_port, git_port, context_builder, caplog):
+    context_builder.build.return_value = CodeContextDTO(
+        stats=ContextStatsDTO(depth="deep", changed_files=1, degraded="RuntimeError: 503"),
+    )
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    with caplog.at_level("INFO"):
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert "degraded=RuntimeError: 503" in caplog.text
+    # The review itself still ran.
+    git_port.send_inline.assert_awaited_once()

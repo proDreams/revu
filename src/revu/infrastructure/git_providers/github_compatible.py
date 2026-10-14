@@ -8,10 +8,17 @@ implementation is what stops the two hosts from drifting apart.
 from functools import partial
 
 from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.review_marker import clean, is_marked
 from revu.domain.entities.dto.review_context_dto import (
     PreviousCommentDTO,
     ReviewContextDTO,
+)
+from revu.infrastructure.git_providers.repository_files import (
+    MAX_TREE_ENTRIES,
+    decode,
 )
 from revu.infrastructure.git_providers.review_context import (
     CONTEXT_PAGE_SIZE,
@@ -93,3 +100,42 @@ class GithubCompatibleComments:
             mapped.extend((sort_key(raw), self._comment(raw, inline=inline)) for raw in raws)
 
         return build_context(mapped)
+
+    def _file_request(self, repo: str, path: str, revision: str) -> tuple[str, dict[str, str]]:
+        """URL and headers that return a file's raw text. Host-specific."""
+        raise NotImplementedError  # pragma: no cover - every concrete port supplies it
+
+    async def fetch_file(self, repo: str, path: str, revision: str) -> str | None:
+        """The file's text at a revision, or ``None`` when the path is not there."""
+        url, headers = self._file_request(repo, path, revision)
+
+        try:
+            content = await self.http_client.get(url=url, headers=headers, expect_json=False)
+        except HttpGatewayError as exc:
+            # A path that does not exist is an answer, not a failure: callers probe.
+            if exc.status_code == 404:
+                return None
+
+            raise
+
+        return decode(content)
+
+    async def list_files(self, repo: str, revision: str) -> tuple[str, ...]:
+        """Every blob of the tree in one request; the hosts truncate it themselves."""
+        payload = await self.http_client.get(
+            url=self._url(f"{self.API_PREFIX}repos/{repo}/git/trees/{revision}?recursive=1"),
+            headers=self._get_headers(),
+        )
+
+        entries = payload.get("tree") if isinstance(payload, dict) else None
+
+        if not isinstance(entries, list):
+            return ()
+
+        paths = [
+            entry["path"]
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("type") == "blob" and isinstance(entry.get("path"), str)
+        ]
+
+        return tuple(paths[:MAX_TREE_ENTRIES])

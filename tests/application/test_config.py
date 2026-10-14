@@ -12,6 +12,7 @@ from revu.application.entities.config import (
     ConfigError,
 )
 from revu.application.entities.enums.ai_provider_enums import AIProviderEnum
+from revu.application.entities.enums.context_depth_enums import ContextDepthEnum
 from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from tests.conftest import GITHUB_SECRET, GITHUB_TOKEN, make_raw_settings
@@ -362,3 +363,55 @@ def test_a_non_boolean_discussion_flag_is_rejected():
         load_settings(raw)
 
     assert "INCLUDE_PR_DISCUSSION must be a boolean" in str(exc_info.value)
+
+
+def test_the_context_depth_is_flat_by_default():
+    """Deep sends whole files to the AI provider, so it is opt-in."""
+    assert load_settings(make_raw_settings()).git_connections["gh-main"].context_depth is ContextDepthEnum.FLAT
+
+
+def test_the_context_depth_can_be_set_globally():
+    raw = make_raw_settings(CONTEXT_DEPTH="deep")
+
+    assert load_settings(raw).git_connections["gh-main"].context_depth is ContextDepthEnum.DEEP
+
+
+def test_a_connection_can_override_the_depth():
+    raw = make_raw_settings(CONTEXT_DEPTH="deep")
+    raw["GIT_PROVIDERS"]["gh-main"]["CONTEXT_DEPTH"] = "flat"
+
+    assert load_settings(raw).git_connections["gh-main"].context_depth is ContextDepthEnum.FLAT
+
+
+def test_an_unknown_context_depth_is_rejected():
+    raw = make_raw_settings(CONTEXT_DEPTH="medium")
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_settings(raw)
+
+    assert "CONTEXT_DEPTH must be one of flat, deep" in str(exc_info.value)
+
+
+def test_the_context_budgets_have_starting_defaults():
+    connection = load_settings(make_raw_settings()).git_connections["gh-main"]
+
+    assert (connection.context_max_files, connection.context_max_chars) == (12, 40_000)
+
+
+def test_the_context_budgets_can_be_tuned_globally_and_per_connection():
+    raw = make_raw_settings(CONTEXT_MAX_FILES=5, CONTEXT_MAX_CHARS=1500)
+    raw["GIT_PROVIDERS"]["gh-main"]["CONTEXT_MAX_CHARS"] = 900
+
+    connection = load_settings(raw).git_connections["gh-main"]
+
+    assert (connection.context_max_files, connection.context_max_chars) == (5, 900)
+
+
+@pytest.mark.parametrize("key", ["CONTEXT_MAX_FILES", "CONTEXT_MAX_CHARS"])
+def test_a_budget_that_is_not_a_positive_number_is_rejected(key):
+    raw = _with_connection(**{key: 0})
+
+    with pytest.raises(ConfigError) as exc_info:
+        load_settings(raw)
+
+    assert f"{key} must be a positive integer" in str(exc_info.value)

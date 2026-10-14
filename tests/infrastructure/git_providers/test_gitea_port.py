@@ -102,3 +102,26 @@ async def test_fetch_review_context_tells_its_own_comment_from_the_author_note()
     assert context is not None
     assert [comment.body for comment in context.findings] == ["поправь"]
     assert [comment.body for comment in context.discussion] == ["моя же заметка"]
+
+
+async def test_fetch_file_uses_the_gitea_raw_endpoint():
+    http_client = AsyncMock()
+    http_client.get.return_value = b"text"
+
+    await _port(http_client).fetch_file(repo="owner/repo", path="src/app.go", revision="abc")
+
+    assert http_client.get.await_args.kwargs["url"] == (
+        "https://gitea.internal/api/v1/repos/owner/repo/raw/src/app.go?ref=abc"
+    )
+
+
+async def test_list_files_uses_the_gitea_tree_endpoint():
+    http_client = AsyncMock()
+    http_client.get.return_value = {"tree": [{"path": "a.go", "type": "blob"}]}
+
+    paths = await _port(http_client).list_files(repo="owner/repo", revision="abc")
+
+    assert paths == ("a.go",)
+    assert http_client.get.await_args.kwargs["url"] == (
+        "https://gitea.internal/api/v1/repos/owner/repo/git/trees/abc?recursive=1"
+    )

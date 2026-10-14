@@ -124,7 +124,10 @@ class HttpClientGateway:
                     continue
 
                 # A 4xx other than 429 will not become a success by repeating it.
-                raise HttpGatewayError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}")
+                raise HttpGatewayError(
+                    f"HTTP {resp.status_code} from {url}: {resp.text[:300]}",
+                    status_code=resp.status_code,
+                )
 
             if not expect_json:
                 return resp.content

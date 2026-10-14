@@ -68,14 +68,16 @@ GIT_PROVIDERS:
     # GIT_PROVIDER_REVIEWER: "slug"
     # (optional) SYSTEM_PROMPT — extra instructions for this connection only.
     # SYSTEM_PROMPT: "Always mention the project coding standards."
-    # (optional) REVIEW_MODE, MAX_CONCURRENT_REVIEWS, NOTIFY_ON_FAILURE and
-    # INCLUDE_PR_DISCUSSION — per-connection values that fall back to the global
-    # ones. INCLUDE_PR_DISCUSSION: false keeps other people's pull request
-    # comments away from the AI provider on a repeated review.
+    # (optional) REVIEW_MODE, MAX_CONCURRENT_REVIEWS, NOTIFY_ON_FAILURE,
+    # INCLUDE_PR_DISCUSSION, CONTEXT_DEPTH and the context budgets — per-connection
+    # values that fall back to the global ones.
     # REVIEW_MODE: "comment"
     # MAX_CONCURRENT_REVIEWS: 1
     # NOTIFY_ON_FAILURE: false
     # INCLUDE_PR_DISCUSSION: false
+    # CONTEXT_DEPTH: "deep"
+    # CONTEXT_MAX_FILES: 12
+    # CONTEXT_MAX_CHARS: 40000
 
 # logger
 # LOG_LEVEL — log detail level (DEBUG, INFO, WARNING, ERROR, CRITICAL)

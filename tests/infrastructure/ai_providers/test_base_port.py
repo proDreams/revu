@@ -22,6 +22,11 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     GithubReviewResponse,
     GitlabReviewResponse,
 )
+from revu.domain.entities.dto.code_context_dto import (
+    CodeContextDTO,
+    ContextEntryDTO,
+    ContextStatsDTO,
+)
 from revu.domain.entities.dto.review_context_dto import (
     PreviousCommentDTO,
     ReviewContextDTO,
@@ -268,3 +273,70 @@ def test_free_text_providers_hand_the_finding_status_through():
     )
 
     assert payload["previous_findings"] == [{"summary": "s", "status": "fixed"}]
+
+
+# ── the surrounding code ────────────────────────────────────────────────────
+
+CODE_CONTEXT = CodeContextDTO(
+    entries=(
+        ContextEntryDTO(
+            kind="symbol", path="src/app/service.py", title="Service.run (строки 1-20)", text="def run(): ..."
+        ),
+        ContextEntryDTO(
+            kind="signature", path="src/app/repo.py", title="Repo.save (сигнатура)", text="def save(self): ..."
+        ),
+    ),
+    stats=ContextStatsDTO(depth="deep", changed_files=1, body_files=1, chars=200),
+)
+
+
+def test_the_surrounding_code_travels_in_the_user_message():
+    prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
+
+    assert "Окружающий код" in prompt
+    assert "[src/app/service.py] Service.run (строки 1-20)" in prompt
+    assert "def run(): ..." in prompt
+    assert "[src/app/repo.py] Repo.save (сигнатура)" in prompt
+
+
+def test_the_context_stays_inside_the_guarded_block():
+    """Repository code is untrusted text like anything else in a pull request."""
+    prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
+
+    assert prompt.index("=== НАЧАЛО ДАННЫХ PR ===") < prompt.index("Окружающий код")
+    assert prompt.index("Окружающий код") < prompt.index("=== КОНЕЦ ДАННЫХ PR ===")
+
+
+def test_the_review_is_told_to_comment_only_on_the_diff():
+    prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
+
+    assert "Комментировать можно только строки из диффа" in prompt
+
+
+def test_a_review_without_context_has_no_context_section():
+    prompt = BaseAIPort._get_diff_prompt(make_task())
+
+    assert "Окружающий код" not in prompt
+
+
+def test_an_empty_context_is_not_a_section_either():
+    prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CodeContextDTO()))
+
+    assert "Окружающий код" not in prompt
+
+
+def test_a_truncated_context_admits_it():
+    truncated = CodeContextDTO(
+        entries=CODE_CONTEXT.entries,
+        stats=ContextStatsDTO(depth="deep", chars=200, truncated=True),
+    )
+
+    assert "контекст приведён частично" in BaseAIPort._get_diff_prompt(make_task(code_context=truncated))
+
+
+def test_the_previous_review_and_the_context_can_both_be_present():
+    task = make_task(previous_review=_context(FINDING), code_context=CODE_CONTEXT)
+
+    prompt = BaseAIPort._get_diff_prompt(task)
+
+    assert prompt.index("Замечания ReVu ранее") < prompt.index("Окружающий код")

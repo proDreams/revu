@@ -235,3 +235,27 @@ def test_every_vendor_builds_the_matching_port(http_gateway, vendor, expected):
     profile = make_ai_profile(vendor=vendor, base_url="https://cheap.example.com/v1", folder_id="f", scope="s")
 
     assert isinstance(_build_port(profile, http_gateway), expected)
+
+
+def test_the_parser_is_a_single_shared_instance(http_gateway):
+    """Grammar objects are expensive to build, so the application builds one parser."""
+    from revu.application.services.context_builder import ContextBuilder
+    from revu.domain.protocols.code_parser_protocol import CodeParserProtocol
+    from revu.infrastructure.code_analysis.tree_sitter_parser import TreeSitterCodeParser
+
+    parser = TreeSitterCodeParser()
+
+    assert isinstance(parser, CodeParserProtocol)
+    assert isinstance(ContextBuilder(parser=parser), ContextBuilder)
+
+
+def test_the_parser_knows_the_main_languages():
+    """The shipped grammars are the product's promise of universality."""
+    from revu.infrastructure.code_analysis.tree_sitter_parser import TreeSitterCodeParser
+
+    parser = TreeSitterCodeParser()
+
+    for path in ("a.py", "a.ts", "a.tsx", "a.go", "a.java", "a.rb", "a.rs", "a.cs", "a.php", "a.sh", "a.sql"):
+        assert parser.supports(path) is True, path
+
+    assert parser.supports("notes.txt") is False

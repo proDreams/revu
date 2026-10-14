@@ -2,6 +2,9 @@ from typing import cast
 from urllib.parse import quote, urljoin
 
 from revu.application.entities.config import GitConnectionConfig
+from revu.application.entities.exceptions.http_gateway_exceptions import (
+    HttpGatewayError,
+)
 from revu.application.entities.exceptions.provider_exceptions import (
     GitProviderException,
 )
@@ -19,8 +22,13 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 )
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.git_providers.gitlab.helpers import json_diff_to_unified
+from revu.infrastructure.git_providers.repository_files import (
+    MAX_TREE_ENTRIES,
+    decode,
+)
 from revu.infrastructure.git_providers.review_context import (
     CONTEXT_PAGE_SIZE,
+    MAX_CONTEXT_PAGES,
     body_of,
     build_context,
     fetch_list_pages,
@@ -134,6 +142,49 @@ class GitlabPort(GitProviderProtocol):
         )
 
         return build_context((sort_key(raw), self._note(raw)) for raw in raws)
+
+    async def fetch_file(self, repo: str, path: str, revision: str) -> str | None:
+        """The file's text at a revision, or ``None`` when the path is not there."""
+        project = self._project(repo)
+        encoded = quote(path, safe="")
+
+        try:
+            content = await self.http_client.get(
+                url=self._api_url(f"projects/{project}/repository/files/{encoded}/raw?ref={revision}"),
+                headers=self._get_headers(),
+                expect_json=False,
+            )
+        except HttpGatewayError as exc:
+            if exc.status_code == 404:
+                return None
+
+            raise
+
+        return decode(content)
+
+    async def list_files(self, repo: str, revision: str) -> tuple[str, ...]:
+        """Every file of the tree; GitLab pages the listing like the diff endpoint."""
+        project = self._project(repo)
+        paths: list[str] = []
+
+        for page in range(1, MAX_CONTEXT_PAGES + 1):
+            payload = await self.http_client.get(
+                url=self._api_url(
+                    f"projects/{project}/repository/tree"
+                    f"?recursive=true&per_page={CONTEXT_PAGE_SIZE}&page={page}&ref={revision}"
+                ),
+                headers=self._get_headers(),
+            )
+
+            entries = [entry for entry in payload if isinstance(entry, dict)] if isinstance(payload, list) else []
+            paths.extend(
+                entry["path"] for entry in entries if entry.get("type") == "blob" and isinstance(entry.get("path"), str)
+            )
+
+            if len(entries) < CONTEXT_PAGE_SIZE or len(paths) >= MAX_TREE_ENTRIES:
+                break
+
+        return tuple(paths[:MAX_TREE_ENTRIES])
 
     async def send_comment(self, repo_owner: str, review: str, index: int) -> None:
         await self.http_client.post(

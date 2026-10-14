@@ -39,6 +39,15 @@ _FENCED_JSON_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(?P<body>.*?)(?:```)?\s*$", 
 
 # A pull request discussion can be long; the prompt only needs enough of it to
 # recognise what was already raised, so both lists and each body are capped.
+#: The surrounding code carries its own heading, because a model that comments on
+#: code the pull request did not change turns a helpful review into noise.
+CODE_CONTEXT_HEADER = """--- Окружающий код (в этом PR не менялся) ---
+Это тела изменённых функций, сигнатуры того, что они вызывают, и связанные тесты.
+Комментировать можно только строки из диффа ниже: по этому коду инлайн-комментарии не оставляй.
+Если проблема видна только здесь — скажи о ней в общем комментарии."""
+
+CODE_CONTEXT_TRUNCATED = "Внимание: контекст приведён частично, лимит исчерпан."
+
 MAX_CONTEXT_FINDINGS = 25
 MAX_CONTEXT_DISCUSSION = 25
 MAX_CONTEXT_BODY_CHARS = 600
@@ -134,8 +143,27 @@ class BaseAIPort(AIProviderProtocol):
             pr_title=task.pr_title,
             pr_body=task.pr_body or "(не указано)",
             previous_review=cls._render_previous_review(task),
+            code_context=cls._render_code_context(task),
             diff=task.diff,
         )
+
+    @classmethod
+    def _render_code_context(cls, task: ReviewTask) -> str:
+        """Describe the surrounding code, when the review was given any."""
+        context = task.code_context
+
+        if context is None or context.is_empty:
+            return ""
+
+        blocks = [CODE_CONTEXT_HEADER, ""]
+
+        if context.stats.truncated:
+            blocks.extend([CODE_CONTEXT_TRUNCATED, ""])
+
+        for entry in context.entries:
+            blocks.extend([f"[{entry.path}] {entry.title}", entry.text, ""])
+
+        return "\n".join(blocks) + "\n"
 
     @classmethod
     def _render_previous_review(cls, task: ReviewTask) -> str:

@@ -9,8 +9,10 @@ from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
 )
 from revu.application.entities.tenant import TenantContext
+from revu.application.services.context_builder import ContextBuilder, ContextRequest
 from revu.application.services.diff_anchors import DiffAnchors, drop_unanchored_comments
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.dto.code_context_dto import CHARS_PER_TOKEN, CodeContextDTO
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.dto.review_context_dto import ReviewContextDTO
 from revu.domain.entities.dto.review_task_dto import ReviewTask
@@ -23,8 +25,12 @@ class ReviewService:
 
     Stateless by design: the git port, the AI port, the review mode, the prompt
     and the concurrency budget all come from the :class:`TenantContext`, which is
-    why a single instance can serve every configured connection.
+    why a single instance can serve every configured connection. The context
+    builder is shared, and holds nothing but a parser.
     """
+
+    def __init__(self, context_builder: ContextBuilder) -> None:
+        self._context_builder = context_builder
 
     async def process_webhook(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
         """Run one review, waiting for a free slot of this connection.
@@ -123,6 +129,72 @@ class ReviewService:
 
         return review_marker.mark(f"{header}\n\n{text}")
 
+    async def _fetch_code_context(
+        self,
+        tenant: TenantContext,
+        webhook_data: PullRequestEventDTO,
+        diff: str,
+    ) -> CodeContextDTO:
+        """The surrounding code, plus the numbers that let the budgets be tuned.
+
+        The builder never raises: a review that cannot read its context still runs,
+        with fewer entries and a reason recorded in the stats.
+        """
+        request = ContextRequest(
+            repo=webhook_data.repo_full_name,
+            revision=webhook_data.commit_sha,
+            diff=diff,
+            depth=tenant.config.context_depth,
+            max_extra_files=tenant.config.context_max_files,
+            max_chars=tenant.config.context_max_chars,
+        )
+
+        context = await self._context_builder.build(tenant.git_port, request)
+        self._log_context(tenant, webhook_data, diff, context)
+
+        return context
+
+    @staticmethod
+    def _log_context(
+        tenant: TenantContext,
+        webhook_data: PullRequestEventDTO,
+        diff: str,
+        context: CodeContextDTO,
+    ) -> None:
+        """One line per review.
+
+        Deliberately verbose: the budgets are guesses until an operator reads real
+        runs and sees what the diff cost against what the context added.
+        """
+        stats = context.stats
+        degraded = f" degraded={stats.degraded}" if stats.degraded else ""
+
+        logger.info(
+            "review context for connection %s, %s#%s: depth=%s; "
+            "diff=%d files/%d chars (~%d tokens); "
+            "context=%d entries/%d chars (~%d tokens): bodies=%d extra_files=%d "
+            "signatures=%d tests=%d unparsed=%d; requests=%d truncated=%s took=%.2fs%s",
+            tenant.key,
+            webhook_data.repo_full_name,
+            webhook_data.pr_number,
+            stats.depth,
+            stats.changed_files,
+            len(diff),
+            len(diff) // CHARS_PER_TOKEN,
+            len(context.entries),
+            stats.chars,
+            stats.chars // CHARS_PER_TOKEN,
+            stats.body_files,
+            stats.extra_files,
+            stats.signatures,
+            stats.tests,
+            stats.unparsed_files,
+            stats.requests,
+            stats.truncated,
+            stats.seconds,
+            degraded,
+        )
+
     async def _run_review(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
         diff = await tenant.git_port.fetch_diff(
             repo=webhook_data.repo_full_name,
@@ -130,6 +202,7 @@ class ReviewService:
         )
 
         context = await self._fetch_review_context(tenant, webhook_data)
+        code_context = await self._fetch_code_context(tenant, webhook_data, diff)
 
         task = ReviewTask(
             diff=diff,
@@ -138,6 +211,7 @@ class ReviewService:
             pr_body=webhook_data.pr_body,
             system_prompt=tenant.config.system_prompt,
             previous_review=context,
+            code_context=code_context,
         )
 
         match tenant.config.review_mode:
