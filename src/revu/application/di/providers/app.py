@@ -5,6 +5,7 @@ from dishka import Provider, Scope, provide
 from revu.application.config import load_settings
 from revu.application.entities.config import Settings
 from revu.application.services.context_builder import ContextBuilder
+from revu.application.services.review_runner import ReviewRunner
 from revu.application.services.revision_store import ReviewedRevisionStore
 from revu.domain.protocols.code_parser_protocol import CodeParserProtocol
 from revu.infrastructure.code_analysis.tree_sitter_parser import TreeSitterCodeParser
@@ -42,6 +43,10 @@ class AppProvider(Provider):
     @provide
     def context_builder(self, parser: CodeParserProtocol) -> ContextBuilder:
         return ContextBuilder(parser=parser)
+
+    @provide
+    def review_runner(self, context_builder: ContextBuilder) -> ReviewRunner:
+        return ReviewRunner(context_builder=context_builder)
 
     @provide
     def reviewed_revisions(self) -> ReviewedRevisionStore:

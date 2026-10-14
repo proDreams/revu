@@ -10,6 +10,7 @@ from revu.application.entities.exceptions.review_service_exceptions import (
 )
 from revu.application.entities.review_marker import MARKER, is_marked
 from revu.application.entities.tenant import GitConnection, TenantContext
+from revu.application.services.review_runner import ReviewRunner
 from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.ai_provider_dto import (
     PreviousFindingDTO,
@@ -84,8 +85,13 @@ def context_builder():
 
 
 @pytest.fixture
-def service(context_builder):
-    return ReviewService(context_builder=context_builder)
+def runner(context_builder):
+    return ReviewRunner(context_builder=context_builder)
+
+
+@pytest.fixture
+def service(runner):
+    return ReviewService(runner=runner)
 
 
 def make_tenant(ai_port, git_port, **connection) -> TenantContext:
@@ -229,7 +235,7 @@ new file mode 100644
 +created
 """
 
-    annotated = ReviewService.annotate_diff(diff_text=diff)
+    annotated = ReviewRunner.annotate_diff(diff_text=diff)
 
     assert "diff --git /dev/null b/new.py" in annotated
     assert "new file mode 100644" in annotated
@@ -245,7 +251,7 @@ deleted file mode 100644
 -deleted
 """
 
-    annotated = ReviewService.annotate_diff(diff_text=diff)
+    annotated = ReviewRunner.annotate_diff(diff_text=diff)
 
     assert "deleted file mode 100644" in annotated
     assert "- [1] deleted" in annotated
@@ -263,7 +269,7 @@ def test_annotate_diff_drops_no_newline_marker():
 +new
 """
 
-    annotated = ReviewService.annotate_diff(diff_text=diff)
+    annotated = ReviewRunner.annotate_diff(diff_text=diff)
 
     assert "No newline at end of file" not in annotated
     assert "- [1] old" in annotated
@@ -271,7 +277,7 @@ def test_annotate_diff_drops_no_newline_marker():
 
 
 def test_annotate_diff_passes_empty_text_through():
-    assert ReviewService.annotate_diff(diff_text="") == ""
+    assert ReviewRunner.annotate_diff(diff_text="") == ""
 
 
 async def test_unanchored_comments_are_dropped_before_sending(service, ai_port, git_port, caplog):

@@ -29,7 +29,7 @@ from revu.domain.entities.dto.code_context_dto import (
 )
 from revu.domain.entities.dto.parsed_file_dto import ImportDTO, ParsedFileDTO, SymbolDTO
 from revu.domain.protocols.code_parser_protocol import CodeParserProtocol
-from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
+from revu.domain.protocols.git_reader_protocol import GitReaderProtocol
 from revu.infrastructure.git_providers.repository_files import too_large
 
 logger = get_logger(name=__name__)
@@ -154,7 +154,7 @@ class ContextBuilder:
 
         return True
 
-    async def build(self, port: GitProviderProtocol, request: ContextRequest) -> CodeContextDTO:
+    async def build(self, port: GitReaderProtocol, request: ContextRequest) -> CodeContextDTO:
         """The context for one review, or an empty one with a reason in the stats."""
         started = time.monotonic()
         changed = changed_files(request.diff)
@@ -205,7 +205,7 @@ class ContextBuilder:
 
     async def _list_files(
         self,
-        port: GitProviderProtocol,
+        port: GitReaderProtocol,
         request: ContextRequest,
         gathering: _Gathering,
     ) -> tuple[str, ...]:
@@ -216,7 +216,7 @@ class ContextBuilder:
 
     async def _collect(
         self,
-        port: GitProviderProtocol,
+        port: GitReaderProtocol,
         request: ContextRequest,
         changed: tuple[ChangedFile, ...],
         known_paths: tuple[str, ...],
@@ -251,7 +251,7 @@ class ContextBuilder:
 
     async def _read(
         self,
-        port: GitProviderProtocol,
+        port: GitReaderProtocol,
         request: ContextRequest,
         path: str,
         gathering: _Gathering,
@@ -350,7 +350,7 @@ class ContextBuilder:
 
     async def _add_dependencies(
         self,
-        port: GitProviderProtocol,
+        port: GitReaderProtocol,
         request: ContextRequest,
         file: ChangedFile,
         parsed: ParsedFileDTO,
@@ -420,7 +420,7 @@ class ContextBuilder:
 
     async def _add_tests(
         self,
-        port: GitProviderProtocol,
+        port: GitReaderProtocol,
         request: ContextRequest,
         file: ChangedFile,
         known_paths: tuple[str, ...],
