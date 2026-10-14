@@ -6,13 +6,11 @@ from revu.presentation.webhooks.mappers import (
     bitbucket_to_domain,
     gitea_to_domain,
     github_to_domain,
-    gitverse_to_domain,
 )
 from revu.presentation.webhooks.schemas.github_schemas import (
     BitBucketPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
-    GitVersePullRequestWebhook,
 )
 from tests.fixtures.presentation_fixtures.payloads import VALID_WEBHOOK_PAYLOAD
 
@@ -36,12 +34,6 @@ def test_github_to_domain_maps_all_fields():
 def test_gitea_to_domain_uses_same_mapping():
     schema = GiteaPullRequestWebhook(**VALID_WEBHOOK_PAYLOAD)
     dto = gitea_to_domain(event=schema)
-    assert isinstance(dto, PullRequestEventDTO)
-
-
-def test_gitverse_to_domain_uses_same_mapping():
-    schema = GitVersePullRequestWebhook(**VALID_WEBHOOK_PAYLOAD)
-    dto = gitverse_to_domain(event=schema)
     assert isinstance(dto, PullRequestEventDTO)
 
 

@@ -13,12 +13,13 @@ class YandexGPTAdapter:
         )
 
     async def get_chat_response(self, messages: list[dict[str, str]]) -> str:
-        # type: ignore
         model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
 
         response = await model.run(messages)
 
-        if response:
-            return response[0].text
-        else:
+        text = response[0].text if response else None
+
+        if not text:
             raise NoAIResponse("Yandex GPT returned no response")
+
+        return text

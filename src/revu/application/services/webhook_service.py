@@ -1,3 +1,5 @@
+import asyncio
+
 from unidiff import PatchSet
 
 from revu.application.config import get_settings
@@ -9,19 +11,33 @@ from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 
+DEFAULT_MAX_CONCURRENT_REVIEWS = 3
+
 
 class WebhookService:
     def __init__(self, ai_port: AIProviderProtocol, git_port: GitProviderProtocol) -> None:
         self.ai_port = ai_port
         self.git_port = git_port
+        self._review_slots = asyncio.Semaphore(
+            int(get_settings().get("MAX_CONCURRENT_REVIEWS", DEFAULT_MAX_CONCURRENT_REVIEWS))
+        )
 
     async def process_webhook(self, webhook_data: PullRequestEventDTO) -> None:
-        requested_diff = await self.git_port.fetch_diff(
+        """Run one review, waiting for a free slot if too many are in flight.
+
+        Reviews run in background tasks, so without a bound a burst of pushes
+        would start an unlimited number of them, each holding a full diff in
+        memory and calling the AI provider. Waiting here only delays a review
+        whose response has already been sent.
+        """
+        async with self._review_slots:
+            await self._run_review(webhook_data=webhook_data)
+
+    async def _run_review(self, webhook_data: PullRequestEventDTO) -> None:
+        diff = await self.git_port.fetch_diff(
             repo=webhook_data.repo_full_name,
             index=webhook_data.pr_number,
         )
-
-        diff = requested_diff.decode() if isinstance(requested_diff, bytes) else requested_diff
 
         match get_settings().REVIEW_MODE:
             case ReviewModeEnum.COMMENT:

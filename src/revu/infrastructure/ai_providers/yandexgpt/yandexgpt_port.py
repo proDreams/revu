@@ -1,8 +1,3 @@
-import json
-
-from revu.application.entities.exceptions.ai_adapters_exceptions import (
-    InvalidAIOutput,
-)
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.yandexgpt.yandexgpt_adapter import YandexGPTAdapter
@@ -28,6 +23,8 @@ class YandexGPTPort(BaseAIPort):
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
     ) -> ReviewResponseDTO:
+        response_model = self._get_response_model(git_provider)
+
         messages = self._get_messages(
             system_prompt=self._inline_instructions(git_provider),
             user_prompt=self._get_diff_prompt(pr_title, pr_body, diff),
@@ -35,17 +32,10 @@ class YandexGPTPort(BaseAIPort):
 
         output = await self.adapter.get_chat_response(messages=messages)
 
-        # temporary solution
-        if output.startswith("```") and output.endswith("```"):
-            output = output[3:-3]
-
-        try:
-            serialized_output = json.loads(output)
-        except json.decoder.JSONDecodeError:
-            raise InvalidAIOutput("invalid JSON response from yandexgpt")
+        payload = self._parse_inline_payload(output, provider="yandexgpt", response_model=response_model)
 
         return ReviewResponseDTO.from_request(
-            general_comment=serialized_output["general_comment"],
-            comments=serialized_output["comments"],
+            general_comment=payload["general_comment"],
+            comments=payload["comments"],
             git_provider=git_provider,
         )

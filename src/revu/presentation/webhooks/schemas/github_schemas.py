@@ -34,10 +34,6 @@ class GiteaPullRequestWebhook(GithubPullRequestWebhook):
     pass
 
 
-class GitVersePullRequestWebhook(GithubPullRequestWebhook):
-    pass
-
-
 class BitBucketPullRequestWebhook(GithubPullRequestWebhook):
     pass
 
@@ -60,18 +56,28 @@ class _BBPlR(BaseModel):
     id: int
     title: str
     toRef: _BBTR
+    # `fromRef` is the source branch of the pull request, and therefore the one
+    # that carries the reviewed commits. It is optional so a truncated payload
+    # still maps instead of failing validation.
+    fromRef: _BBTR | None = None
 
 
 class BitBucketRawPullRequestWebhook(BaseModel):
-    eventKey: str  # 'pr:modified' / 'pr:opened'
+    eventKey: str  # 'pr:opened' / 'pr:from_ref_updated'
     pullRequest: _BBPlR
 
     def to_bb(self) -> BitBucketPullRequestWebhook:
+        # The reviewed commit is the tip of the source branch (`fromRef`);
+        # `toRef` is the target branch, usually the default one. The pull request
+        # itself (and therefore its REST path) belongs to the destination
+        # repository, which is why `toRef.repository` names the repo.
+        reviewed_ref = self.pullRequest.fromRef or self.pullRequest.toRef
+
         return BitBucketPullRequestWebhook(
-            action=PullRequestActionEnum.OPENED if self.eventKey == "pr:opened" else PullRequestActionEnum.REOPENED,
+            action=PullRequestActionEnum.OPENED if self.eventKey == "pr:opened" else PullRequestActionEnum.SYNCHRONIZE,
             pull_request=PullRequest(
                 number=self.pullRequest.id,
-                head=Branch(sha=self.pullRequest.toRef.latestCommit),
+                head=Branch(sha=reviewed_ref.latestCommit),
                 title=self.pullRequest.title,
                 body=None,
             ),

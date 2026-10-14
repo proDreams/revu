@@ -11,7 +11,10 @@ GIT_PROVIDER_CONFIG:
   GIT_PROVIDER: "gitea"
   # GIT_PROVIDER_USER_TOKEN — personal access token of the bot/user to access API
   GIT_PROVIDER_USER_TOKEN: "asdasdasd"
-  # GIT_PROVIDER_URL — base URL of your git server (used by gitea and bitbucket)
+  # GIT_PROVIDER_URL — base URL of your git server.
+  # Required for gitea and bitbucket. Optional for github: omit it to use
+  # github.com, or set the REST root of a GitHub Enterprise Server instance,
+  # including the /api/v3 suffix (e.g. "https://ghe.example.com/api/v3").
   GIT_PROVIDER_URL: "https://example.com"
   # GIT_PROVIDER_SECRET_TOKEN — secret token to validate incoming webhooks.
   # Must match the secret configured on the provider side. Checked against
@@ -27,6 +30,7 @@ AI_PROVIDER_CONFIG:
   # "openai" (official Responses API)
   # "openai_compatible" (Compatible Chat Completion API: openrouter, lmstudio, etc...)
   # "gigachat"
+  # "yandexgpt"
   AI_PROVIDER: "openai"
   # AI_PROVIDER_API_KEY — API key to authenticate with AI provider
   AI_PROVIDER_API_KEY: "aasdasdasd"

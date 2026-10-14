@@ -1,6 +1,6 @@
 [project]
 name = "revu"
-version = "1.6.0"
+version = "1.7.0"
 description = "Self-hosted AI code review for your Pull Requests."
 authors = [
     { name = "proDream", email = "sushkoos@gmail.com" }
@@ -50,6 +50,16 @@ indent-width = 4
 # ломать их конкатенацией нельзя, всё остальное держит ruff-format.
 select = ["E", "W", "F", "I", "UP"]
 ignore = ["E501"]
+
+[tool.mypy]
+# Хук mirrors-mypy выполняется в изолированном окружении без зависимостей
+# проекта и сам передаёт --ignore-missing-imports, поэтому настройка закреплена
+# и здесь: поведение гейта должно быть воспроизводимым и при ручном запуске.
+# Полноценная проверка границ с fastapi/pydantic/openai требует запуска из venv
+# проекта: uv run --with mypy mypy src
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true
 
 [tool.pytest.ini_options]
 addopts = [

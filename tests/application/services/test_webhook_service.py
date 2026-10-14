@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -84,9 +85,9 @@ async def test_inline_mode_sends_annotated_diff(service, ai_port, git_port, sett
     assert ai_port.get_inline_response.await_args.kwargs["git_provider"] == "gitea"
 
 
-async def test_process_webhook_decodes_bytes_diff(service, ai_port, git_port, settings):
+async def test_the_diff_is_passed_through_as_returned_by_the_port(service, ai_port, git_port, settings):
+    """The port owns decoding; the service must not re-normalise the diff."""
     settings["REVIEW_MODE"] = "comment"
-    git_port.fetch_diff.return_value = DIFF.encode()
 
     await service.process_webhook(webhook_data=make_event())
 
@@ -102,7 +103,38 @@ async def test_process_webhook_rejects_unknown_review_mode(service, settings):
     assert "Unknown review mode" in str(exc_info.value)
 
 
-async def test_annotate_diff_marks_added_file():
+async def test_reviews_are_bounded_by_the_concurrency_limit(settings, ai_port, git_port):
+    """A burst of webhooks must not start an unlimited number of reviews."""
+    settings.set("MAX_CONCURRENT_REVIEWS", 1)
+    service = WebhookService(ai_port=ai_port, git_port=git_port)
+
+    running = 0
+    max_running = 0
+
+    async def slow_fetch_diff(*args, **kwargs) -> str:
+        nonlocal running, max_running
+        running += 1
+        max_running = max(max_running, running)
+        await asyncio.sleep(0)
+        running -= 1
+        return DIFF
+
+    git_port.fetch_diff.side_effect = slow_fetch_diff
+
+    await asyncio.gather(*(service.process_webhook(webhook_data=make_event()) for _ in range(5)))
+
+    assert max_running == 1
+    assert git_port.fetch_diff.await_count == 5
+
+
+async def test_the_concurrency_limit_is_read_from_the_settings(settings, ai_port, git_port):
+    settings.set("MAX_CONCURRENT_REVIEWS", 4)
+    service = WebhookService(ai_port=ai_port, git_port=git_port)
+
+    assert service._review_slots._value == 4
+
+
+def test_annotate_diff_marks_added_file():
     diff = """diff --git a/new.py b/new.py
 new file mode 100644
 --- /dev/null
@@ -118,7 +150,7 @@ new file mode 100644
     assert "+ [1] created" in annotated
 
 
-async def test_annotate_diff_marks_removed_file():
+def test_annotate_diff_marks_removed_file():
     diff = """diff --git a/gone.py b/gone.py
 deleted file mode 100644
 --- a/gone.py
@@ -133,7 +165,7 @@ deleted file mode 100644
     assert "- [1] deleted" in annotated
 
 
-async def test_annotate_diff_drops_no_newline_marker():
+def test_annotate_diff_drops_no_newline_marker():
     # unidiff strips the `\` prefix, so the marker is neither recognised as
     # context nor as a change line; it must not leak into the annotation.
     diff = """diff --git a/app.py b/app.py
@@ -152,5 +184,5 @@ async def test_annotate_diff_drops_no_newline_marker():
     assert "+ [1] new" in annotated
 
 
-async def test_annotate_diff_passes_empty_text_through():
+def test_annotate_diff_passes_empty_text_through():
     assert WebhookService.annotate_diff(diff_text="") == ""

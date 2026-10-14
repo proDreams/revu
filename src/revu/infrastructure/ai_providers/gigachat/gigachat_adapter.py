@@ -16,3 +16,7 @@ class GigaChatAdapter:
         response = await self._gigachat_client.achat(payload=payload)
 
         return response.choices[0].message.content
+
+    async def aclose(self) -> None:
+        """Release the SDK's HTTP client when the container shuts down."""
+        await self._gigachat_client.aclose()

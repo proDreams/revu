@@ -1,3 +1,7 @@
+from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
+    NoAIResponse,
+)
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.openai.openai_adapter import OpenAIAdapter
@@ -14,7 +18,14 @@ class OpenAIPort(BaseAIPort):
             instructions=self._comment_instructions(),
         )
 
-        return output.output_parsed  # type: ignore
+        # No schema is requested in comment mode, so the SDK leaves
+        # ``output_parsed`` as None and the answer lives in ``output_text``.
+        text = output.output_text
+
+        if not text:
+            raise NoAIResponse("OpenAI returned an empty review comment")
+
+        return text
 
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
@@ -28,6 +39,11 @@ class OpenAIPort(BaseAIPort):
         )
 
         parsed_output = output.output_parsed
+
+        # The model may refuse or answer in free text; both leave parsed=None
+        # and used to surface as an unhelpful AttributeError in the background.
+        if parsed_output is None:
+            raise InvalidAIOutput("OpenAI did not return a structured review")
 
         return ReviewResponseDTO.from_request(
             general_comment=parsed_output.general_comment,  # type: ignore

@@ -6,7 +6,6 @@ from typing import Any
 from fastapi import HTTPException
 from starlette import status
 from starlette.requests import Request
-from starlette.status import HTTP_403_FORBIDDEN
 
 from revu.application.config import get_settings
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
@@ -18,7 +17,13 @@ from revu.presentation.webhooks.schemas.github_schemas import (
 
 # Delivery kinds each git host distinguishes for pull requests.
 PULL_REQUEST_EVENT = "pull_request"
-BITBUCKET_PR_EVENTS = ("pr:modified", "pr:opened")
+
+# Bitbucket Data Center delivers `pr:opened` for a new pull request and
+# `pr:from_ref_updated` when commits are pushed to its source branch. Those are
+# the two events that change the code under review; `pr:modified` only means the
+# pull request metadata (title, description, target branch) changed, so it must
+# not trigger a review of an unchanged diff.
+BITBUCKET_PR_EVENTS = ("pr:opened", "pr:from_ref_updated")
 
 # Headers carrying an HMAC-SHA256 of the raw body. GitHub and Gitea send the
 # GitHub-compatible one, Gitea additionally sends its own, Bitbucket Data
@@ -26,10 +31,31 @@ BITBUCKET_PR_EVENTS = ("pr:modified", "pr:opened")
 SIGNATURE_HEADERS = ("x-hub-signature-256", "x-gitea-signature", "x-hub-signature")
 
 
+class ReviewNotNeededError(Exception):
+    """An authentic delivery that ReVu has nothing to do for.
+
+    The routes turn this into ``200 OK`` so hosts do not retry. Raising
+    ``HTTPException`` with a 2xx status (the previous approach) was misleading
+    and depended on Starlette's fallback handler lookup.
+    """
+
+    def __init__(self, reason: str = "Review not needed") -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
 def _verify_signature(request: Request, body: bytes) -> None:
-    """Reject the request unless its HMAC-SHA256 signature matches."""
+    """Reject the request unless one of its HMAC-SHA256 signatures matches.
+
+    Every present signature header is tried: hosts can send more than one (Gitea
+    sends both its native header and the GitHub-compatible one), and rejecting
+    on the first header that happens to be present broke valid deliveries whose
+    matching header came second.
+    """
     secret_token = get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN
-    expected_signature = hmac.new(secret_token.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(str(secret_token).encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+    found_signature_header = False
 
     for header_name in SIGNATURE_HEADERS:
         signature_header = request.headers.get(header_name)
@@ -40,21 +66,24 @@ def _verify_signature(request: Request, body: bytes) -> None:
             # Legacy GitHub header; only the sha256 variant is accepted here.
             continue
 
+        found_signature_header = True
+
         # Hosts differ on the framing: `sha256=<hex>` (GitHub, Bitbucket)
         # or a bare hex digest (Gitea).
-        candidate = signature_header.removeprefix("sha256=").lower()
+        candidate = signature_header.removeprefix("sha256=").strip().lower()
 
-        if hmac.compare_digest(expected_signature.encode("utf-8"), candidate.encode("utf-8")):
+        if hmac.compare_digest(expected_signature, candidate):
             return
 
+    if not found_signature_header:
         raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
-            detail="Request signatures didn't match!",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Signature header is missing! Expected one of: {', '.join(SIGNATURE_HEADERS)}",
         )
 
     raise HTTPException(
-        status_code=HTTP_403_FORBIDDEN,
-        detail=f"Signature header is missing! Expected one of: {', '.join(SIGNATURE_HEADERS)}",
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Request signatures didn't match!",
     )
 
 
@@ -73,8 +102,8 @@ async def verify_webhook_signature(request: Request) -> bytes:
 def _require_event(request: Request, header_name: str) -> None:
     """Ignore deliveries that are not pull request events.
 
-    Hosts deliver far more than pull requests to a single webhook URL; those
-    get an explicit 200 so they are not retried and do not look like failures.
+    Hosts deliver far more than pull requests to a single webhook URL; those get
+    an explicit 200 so they are not retried and do not look like failures.
     """
     event = request.headers.get(header_name)
     if event is None:
@@ -82,7 +111,7 @@ def _require_event(request: Request, header_name: str) -> None:
         return
 
     if event != PULL_REQUEST_EVENT:
-        raise HTTPException(status_code=status.HTTP_200_OK, detail="Review not needed")
+        raise ReviewNotNeededError()
 
 
 def _load_json(body: bytes) -> dict[str, Any]:
@@ -100,7 +129,7 @@ def _load_json(body: bytes) -> dict[str, Any]:
 def _require_review_action(payload: dict[str, Any]) -> None:
     """Skip actions ReVu never acts on (``closed``, ``labeled``, ...)."""
     if not PullRequestActionEnum.is_review_trigger(str(payload.get("action", ""))):
-        raise HTTPException(status_code=status.HTTP_200_OK, detail="Review not needed")
+        raise ReviewNotNeededError()
 
 
 def _is_reviewer_targeted(payload: dict[str, Any]) -> bool:
@@ -143,26 +172,9 @@ async def parse_bitbucket_webhook(request: Request) -> BitBucketRawPullRequestWe
     payload_dict = _load_json(body)
 
     if payload_dict.get("eventKey") not in BITBUCKET_PR_EVENTS:
-        raise HTTPException(status_code=status.HTTP_200_OK, detail="Review not needed")
+        raise ReviewNotNeededError()
 
     if not _is_reviewer_targeted(payload_dict):
-        raise HTTPException(status_code=status.HTTP_200_OK, detail="Review not needed")
+        raise ReviewNotNeededError()
 
     return BitBucketRawPullRequestWebhook.model_validate(payload_dict)
-
-
-async def gitverse_validate_authorization(request: Request) -> None:
-    auth_header = request.headers.get("authorization")
-    if not auth_header:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authorization header with token is missing or invalid",
-        )
-
-    secret_token = get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN
-
-    if not hmac.compare_digest(auth_header.encode("utf-8"), secret_token.encode("utf-8")):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid authorization token",
-        )

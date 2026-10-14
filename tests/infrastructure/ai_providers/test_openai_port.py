@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
+    NoAIResponse,
     UnknownGitProvider,
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
@@ -20,10 +22,12 @@ from revu.domain.entities.dto.ai_provider_dto import (
 from revu.infrastructure.ai_providers.openai.openai_port import OpenAIPort
 
 
-async def test_comment_response():
+async def test_comment_response_reads_output_text():
+    """Comment mode requests no schema, so parsed output stays None."""
     adapter = AsyncMock()
     adapter.get_chat_response.return_value = AsyncMock(
-        output_parsed="test output",
+        output_parsed=None,
+        output_text="test output",
     )
     port = OpenAIPort(adapter=adapter)
 
@@ -36,12 +40,31 @@ async def test_comment_response():
     assert result == "test output"
 
 
+async def test_comment_response_rejects_an_empty_answer():
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="")
+    port = OpenAIPort(adapter=adapter)
+
+    with pytest.raises(NoAIResponse):
+        await port.get_comment_response(diff="d", pr_title="t")
+
+
+async def test_inline_response_rejects_a_missing_parsed_payload():
+    """A refusal used to surface as AttributeError inside a background task."""
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None)
+    port = OpenAIPort(adapter=adapter)
+
+    with pytest.raises(InvalidAIOutput):
+        await port.get_inline_response(diff="d", git_provider="github", pr_title="t")
+
+
 async def test_github_inline_response():
     output_parsed = GithubReviewResponse(
         general_comment="test comment",
         comments=[
-            GitHubReviewComment(path="test path", position=0, body="test body"),
-            GitHubReviewComment(path="test path", position=3, body="test body 2"),
+            GitHubReviewComment(path="test path", line=1, side="RIGHT", body="test body"),
+            GitHubReviewComment(path="test path", line=3, side="LEFT", body="test body 2"),
         ],
     )
 
@@ -59,12 +82,14 @@ async def test_github_inline_response():
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == output_parsed.general_comment
     assert result.comments[1].body == output_parsed.comments[1].body
+    assert result.comments[1].side == "LEFT"
+    assert result.comments[0].line == 1
 
 
 async def test_github_with_system_prompt_inline_response():
     output_parsed = GithubReviewResponse(
         general_comment="test comment",
-        comments=[GitHubReviewComment(path="test path", position=0, body="test body")],
+        comments=[GitHubReviewComment(path="test path", line=1, body="test body")],
     )
 
     adapter = AsyncMock()
@@ -90,7 +115,7 @@ async def test_github_with_system_prompt_inline_response():
 
 async def test_github_with_system_prompt_comment_response():
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = AsyncMock(output_parsed="output")
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="output")
     port = OpenAIPort(adapter=adapter)
     port.system_prompt = "test system-prompt"
 
@@ -144,7 +169,7 @@ async def test_unknown_inline_response():
 async def test_bitbucket_inline_response():
     output_parsed = BitbucketReviewResponse(
         general_comment="test comment",
-        comments=[BitbucketReviewComment(path="test path", position=42, body="test body", lineType="ADDED")],
+        comments=[BitbucketReviewComment(path="test path", line=42, body="test body", lineType="ADDED")],
     )
 
     adapter = AsyncMock()
@@ -159,4 +184,4 @@ async def test_bitbucket_inline_response():
     comment = result.comments[0]
     assert isinstance(comment, BitBucketReviewCommentDTO)
     assert comment.lineType == "ADDED"
-    assert comment.position == 42
+    assert comment.line == 42

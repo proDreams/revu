@@ -7,26 +7,32 @@ from revu.infrastructure.http_client.http_client_gateway import HttpClientGatewa
 
 @pytest.fixture(autouse=True)
 def settings(monkeypatch):
+    # Nested sections are plain dicts on purpose: that is what Dynaconf builds
+    # from the YAML settings file, and only that shape supports the dotted
+    # lookups used by validate_settings() (a nested Dynaconf raises
+    # "Invalid dotted lookup").
     fake_settings = Dynaconf(
-        GIT_PROVIDER_CONFIG=Dynaconf(
-            GIT_PROVIDER="gitea",
-            GIT_PROVIDER_USER_TOKEN="test-token",
-            GIT_PROVIDER_URL="https://example.com",
-            GIT_PROVIDER_SECRET_TOKEN="secret",
-            GIT_PROVIDER_REVIEWER="bot",
-        ),
-        AI_PROVIDER_CONFIG=Dynaconf(
-            AI_PROVIDER="openai",
-            AI_PROVIDER_API_KEY="test-key",
-            AI_PROVIDER_BASE_URL="https://example.com/v1",
-            AI_PROVIDER_MODEL="gpt-4.1-mini",
-            AI_PROVIDER_SCOPE="test-scope",
-            AI_PROVIDER_FOLDER_ID="test-folder-id",
-        ),
+        GIT_PROVIDER_CONFIG={
+            "GIT_PROVIDER": "gitea",
+            "GIT_PROVIDER_USER_TOKEN": "test-token",
+            "GIT_PROVIDER_URL": "https://example.com",
+            "GIT_PROVIDER_SECRET_TOKEN": "secret",
+            "GIT_PROVIDER_REVIEWER": "bot",
+        },
+        AI_PROVIDER_CONFIG={
+            "AI_PROVIDER": "openai",
+            "AI_PROVIDER_API_KEY": "test-key",
+            "AI_PROVIDER_BASE_URL": "https://example.com/v1",
+            "AI_PROVIDER_MODEL": "gpt-4.1-mini",
+            "AI_PROVIDER_SCOPE": "test-scope",
+            "AI_PROVIDER_FOLDER_ID": "test-folder-id",
+        },
         REVIEW_MODE="inline",
         SYSTEM_PROMPT=None,
         HTTP_CLIENT_TIMEOUT=30.0,
         HTTP_CLIENT_REQUEST_ATTEMPTS=3,
+        HTTP_CLIENT_RETRY_BACKOFF=0.0,
+        MAX_CONCURRENT_REVIEWS=3,
         LOG_DIR="logs",
         LOG_FILE="test.log",
         LOG_LEVEL="DEBUG",

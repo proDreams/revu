@@ -1,3 +1,5 @@
+from typing import Any
+
 from openai import AsyncClient
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
@@ -21,11 +23,22 @@ class OpenAIAdapter:
         user_input: str,
         response_model: type[BaseModel] | None = None,
     ) -> ParsedResponse:
+        """Call the Responses API, optionally constraining the answer to a schema.
+
+        ``text_format`` must be omitted rather than passed as ``None``: the SDK
+        treats ``None`` as a given value and fails with
+        ``TypeError: Unsupported response_format type - None``. Without it no
+        ``text`` parameter is sent at all, so callers that need structured
+        output must pass ``response_model``, and callers in comment mode must
+        read ``output_text`` instead of ``output_parsed``.
+        """
+        kwargs: dict[str, Any] = {"text_format": response_model} if response_model is not None else {}
+
         response = await self._openai_client.responses.parse(
             model=self.model,  # type: ignore
             instructions=instructions,
             input=user_input,
-            text_format=response_model,  # type: ignore
+            **kwargs,
         )
 
         return response

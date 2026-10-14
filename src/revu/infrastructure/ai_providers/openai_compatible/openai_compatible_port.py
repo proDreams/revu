@@ -3,6 +3,10 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
+from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
+    NoAIResponse,
+)
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_adapter import (
@@ -32,7 +36,12 @@ class OpenAICompatiblePort(BaseAIPort):
             messages=self._get_messages(system_prompt=self._comment_instructions(), user_prompt=user_prompt)
         )
 
-        return output.choices[0].message.content  # type: ignore
+        content = output.choices[0].message.content
+
+        if not content:
+            raise NoAIResponse("OpenAI-compatible provider returned an empty review comment")
+
+        return content
 
     async def get_inline_response(
         self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
@@ -47,6 +56,11 @@ class OpenAICompatiblePort(BaseAIPort):
         )
 
         parsed_output = output.choices[0].message.parsed
+
+        # A refusal or a plain-text answer leaves ``parsed`` empty; without this
+        # check it blew up later as an AttributeError inside a background task.
+        if parsed_output is None:
+            raise InvalidAIOutput("OpenAI-compatible provider did not return a structured review")
 
         return ReviewResponseDTO.from_request(
             general_comment=parsed_output.general_comment,  # type: ignore

@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks
 from fastapi.params import Depends
 from starlette import status
 
@@ -17,10 +17,8 @@ from revu.presentation.webhooks.schemas.github_schemas import (
     BitBucketRawPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
-    GitVersePullRequestWebhook,
 )
 from revu.presentation.webhooks.validators import (
-    gitverse_validate_authorization,
     parse_bitbucket_webhook,
     parse_gitea_webhook,
     parse_github_webhook,
@@ -71,17 +69,3 @@ async def bitbucket_webhook(
 ) -> None:
     domain_event = bitbucket_to_domain(event=webhook_data.to_bb())
     background_tasks.add_task(review_pull_request, service, domain_event)
-
-
-@webhooks_router.post(path="/gitverse", status_code=status.HTTP_200_OK)
-async def gitverse_webhook(
-    webhook_data: GitVersePullRequestWebhook,
-    _: Annotated[None, Depends(gitverse_validate_authorization)],
-) -> None:
-    # Payload shape and auth are validated above, but the integration itself
-    # was never finished. 501 states that explicitly instead of crashing the
-    # worker with NotImplementedError.
-    logger.warning(
-        "GitVerse webhook received for %s, integration is not implemented", webhook_data.repository.full_name
-    )
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="GitVerse integration is not implemented")

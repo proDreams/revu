@@ -28,3 +28,12 @@ RUN curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" \
 
 COPY . /code/
 # Copy the rest of the application source code into the container.
+
+EXPOSE 8000
+# The service listens on port 8000; `docker run` without arguments now works
+# because the command is baked into the image as well.
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+
+CMD ["make", "run_prod"]

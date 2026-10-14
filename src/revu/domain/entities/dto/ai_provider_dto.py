@@ -7,9 +7,12 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 
 @dataclass
 class GithubReviewCommentDTO:
+    """A GitHub inline comment: ``line`` is a file line number, ``side`` its version."""
+
     path: str
-    position: int
+    line: int
     body: str
+    side: str = "RIGHT"
 
 
 @dataclass
@@ -22,10 +25,12 @@ class GiteaReviewCommentDTO:
 
 @dataclass
 class BitBucketReviewCommentDTO:
+    """A Bitbucket anchor: ``line`` is a file line number qualified by ``lineType``."""
+
     path: str
-    lineType: str
+    line: int
     body: str
-    position: int
+    lineType: str = "CONTEXT"
 
 
 @dataclass

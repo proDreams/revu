@@ -1,3 +1,9 @@
+import json
+import re
+from typing import Any
+
+from pydantic import ValidationError
+
 from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
     BITBUCKET_INLINE_PROMPT,
@@ -8,19 +14,26 @@ from revu.application.entities.default_prompts import (
 )
 from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
     UnknownGitProvider,
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
     BitbucketReviewResponse,
     GiteaReviewResponse,
     GithubReviewResponse,
+    ReviewResponse,
 )
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
+
+# ```json\n{...}\n``` / ```\n{...}\n``` / ```{...}``` — the opening fence may
+# carry a language hint, the closing one is optional.
+_FENCED_JSON_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(?P<body>.*?)(?:```)?\s*$", re.DOTALL)
 
 
 class BaseAIPort(AIProviderProtocol):
     def __init__(self):
-        self.system_prompt = str(get_settings().SYSTEM_PROMPT) if get_settings().SYSTEM_PROMPT else None
+        system_prompt = get_settings().SYSTEM_PROMPT
+        self.system_prompt = str(system_prompt).strip() if system_prompt else None
 
     @staticmethod
     def _get_prompt(git_provider: str) -> str:
@@ -64,7 +77,7 @@ class BaseAIPort(AIProviderProtocol):
         return DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff)
 
     @staticmethod
-    def _get_response_model(git_provider: str):
+    def _get_response_model(git_provider: str) -> type[ReviewResponse]:
         match git_provider:
             case GitProviderEnum.GITHUB:
                 return GithubReviewResponse
@@ -74,3 +87,42 @@ class BaseAIPort(AIProviderProtocol):
                 return BitbucketReviewResponse
             case _:
                 raise UnknownGitProvider("unknown git provider")
+
+    @staticmethod
+    def _parse_inline_payload(
+        raw_output: str,
+        provider: str,
+        response_model: type[ReviewResponse],
+    ) -> dict[str, Any]:
+        """Decode the JSON review body of providers without schema enforcement.
+
+        GigaChat and YandexGPT answer in free text, so the prompt is the only
+        contract: an optional Markdown fence has to be stripped, the body has to
+        be valid JSON, and it is then validated against the same pydantic model
+        the structured-output providers use. Every failure surfaces as
+        :class:`InvalidAIOutput` instead of a bare ``JSONDecodeError``,
+        ``KeyError`` or ``ValidationError`` in a background task.
+        """
+        text = (raw_output or "").strip()
+
+        if text.startswith("```"):
+            match = _FENCED_JSON_RE.match(text)
+            text = (match.group("body") if match else text).strip()
+
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            raise InvalidAIOutput(f"invalid JSON response from {provider}")
+
+        if not isinstance(payload, dict):
+            raise InvalidAIOutput(f"unexpected JSON response from {provider}: not an object")
+
+        try:
+            validated = response_model.model_validate(payload)
+        except ValidationError as exc:
+            raise InvalidAIOutput(f"JSON response from {provider} does not match the expected schema: {exc}")
+
+        return {
+            "general_comment": validated.general_comment,
+            "comments": [comment.model_dump() for comment in validated.comments],
+        }

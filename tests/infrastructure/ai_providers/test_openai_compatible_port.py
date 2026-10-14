@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
+    InvalidAIOutput,
+    NoAIResponse,
     UnknownGitProvider,
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
@@ -15,6 +17,12 @@ from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.infrastructure.ai_providers.openai_compatible.openai_compatible_port import (
     OpenAICompatiblePort,
 )
+
+
+def _response(parsed=None, content=None):
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock(message=MagicMock(parsed=parsed, content=content))]
+    return fake_response
 
 
 def test_get_messages():
@@ -30,11 +38,8 @@ def test_get_messages():
 
 
 async def test_comment_response():
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock(message=MagicMock(content="test"))]
-
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = fake_response
+    adapter.get_chat_response.return_value = _response(content="test")
 
     port = OpenAICompatiblePort(adapter=adapter)
 
@@ -47,20 +52,38 @@ async def test_comment_response():
     assert result == "test"
 
 
+async def test_comment_response_rejects_an_empty_answer():
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = _response(content=None)
+
+    port = OpenAICompatiblePort(adapter=adapter)
+
+    with pytest.raises(NoAIResponse):
+        await port.get_comment_response(diff="d", pr_title="t")
+
+
+async def test_inline_response_rejects_a_missing_parsed_payload():
+    """A refusal used to surface as AttributeError inside a background task."""
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = _response(parsed=None, content="I cannot help with that")
+
+    port = OpenAICompatiblePort(adapter=adapter)
+
+    with pytest.raises(InvalidAIOutput):
+        await port.get_inline_response(diff="d", pr_title="t", git_provider="github")
+
+
 async def test_github_inline_response():
     output_parsed = GithubReviewResponse(
         general_comment="test comment",
         comments=[
-            GitHubReviewComment(path="test path", position=0, body="test body"),
-            GitHubReviewComment(path="test path", position=3, body="test body 2"),
+            GitHubReviewComment(path="test path", line=1, side="RIGHT", body="test body"),
+            GitHubReviewComment(path="test path", line=3, side="LEFT", body="test body 2"),
         ],
     )
 
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock(message=MagicMock(parsed=output_parsed))]
-
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = fake_response
+    adapter.get_chat_response.return_value = _response(parsed=output_parsed)
 
     port = OpenAICompatiblePort(adapter=adapter)
 
@@ -74,22 +97,20 @@ async def test_github_inline_response():
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == "test comment"
     assert result.comments[1].body == "test body 2"
+    assert result.comments[1].side == "LEFT"
 
 
 async def test_github_with_system_prompt_inline_response():
     output_parsed = GithubReviewResponse(
         general_comment="test comment",
         comments=[
-            GitHubReviewComment(path="test path", position=0, body="test body"),
-            GitHubReviewComment(path="test path", position=3, body="test body 2"),
+            GitHubReviewComment(path="test path", line=1, body="test body"),
+            GitHubReviewComment(path="test path", line=3, body="test body 2"),
         ],
     )
 
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock(message=MagicMock(parsed=output_parsed))]
-
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = fake_response
+    adapter.get_chat_response.return_value = _response(parsed=output_parsed)
 
     port = OpenAICompatiblePort(adapter=adapter)
     port.system_prompt = "test system-prompt"
@@ -113,11 +134,8 @@ async def test_gitea_inline_response():
         ],
     )
 
-    fake_response = MagicMock()
-    fake_response.choices = [MagicMock(message=MagicMock(parsed=output_parsed))]
-
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = fake_response
+    adapter.get_chat_response.return_value = _response(parsed=output_parsed)
 
     port = OpenAICompatiblePort(adapter=adapter)
 

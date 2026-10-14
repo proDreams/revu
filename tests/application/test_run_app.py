@@ -34,3 +34,16 @@ def test_run_app_starts_uvicorn_with_correct_params(monkeypatch):
     assert kwargs["port"] == 8000
     assert kwargs["loop"] == "asyncio"
     assert kwargs["log_config"] is None
+
+
+def test_run_app_honours_configured_host_and_port(monkeypatch, settings):
+    called = {}
+    settings.set("APP_HOST", "127.0.0.1")
+    settings.set("APP_PORT", 9001)
+
+    monkeypatch.setattr("revu.application.app.uvicorn.run", lambda app, **kwargs: called.update(kwargs))
+
+    run_app()
+
+    assert called["host"] == "127.0.0.1"
+    assert called["port"] == 9001

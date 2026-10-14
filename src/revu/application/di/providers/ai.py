@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+
 from dishka import Provider, Scope, provide
 
 from revu.application.config import get_settings
@@ -24,22 +26,30 @@ from revu.infrastructure.http_client.http_client_gateway import HttpClientGatewa
 class AIProviderProvider(Provider):
     """The single AI port backed by the configured provider.
 
-    Adapters hold network clients, so they are built once and shared instead
-    of being recreated for every webhook.
+    Adapters hold network clients, so they are built once and shared instead of
+    being recreated for every webhook. Providers that expose a close hook get it
+    called when the container shuts down.
     """
 
     scope = Scope.APP
 
     @provide
-    def ai_port(self, http_gateway: HttpClientGateway) -> AIProviderProtocol:
+    async def ai_port(self, http_gateway: HttpClientGateway) -> AsyncIterator[AIProviderProtocol]:
         match get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER:
             case AIProviderEnum.OPENAI:
-                return OpenAIPort(adapter=OpenAIAdapter(http_client=http_gateway))
+                yield OpenAIPort(adapter=OpenAIAdapter(http_client=http_gateway))
             case AIProviderEnum.OPENAI_COMPATIBLE:
-                return OpenAICompatiblePort(adapter=OpenAICompatibleAdapter(http_client=http_gateway))
+                yield OpenAICompatiblePort(adapter=OpenAICompatibleAdapter(http_client=http_gateway))
             case AIProviderEnum.GIGACHAT:
-                return GigaChatPort(adapter=GigaChatAdapter())
+                gigachat_adapter = GigaChatAdapter()
+                try:
+                    yield GigaChatPort(adapter=gigachat_adapter)
+                finally:
+                    await gigachat_adapter.aclose()
             case AIProviderEnum.YANDEXGPT:
-                return YandexGPTPort(adapter=YandexGPTAdapter())
+                # The Yandex AI Studio SDK exposes no close hook, so this client
+                # has to live for the whole process. Creating it once here still
+                # keeps a single connection pool instead of one per webhook.
+                yield YandexGPTPort(adapter=YandexGPTAdapter())
             case _:
                 raise AIProviderException("Unknown AI provider")

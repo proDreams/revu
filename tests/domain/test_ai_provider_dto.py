@@ -16,8 +16,8 @@ pytestmark = pytest.mark.unit
 def test_create_github_response_ai_provider_dto():
     general_comment = "test comment"
     comments = [
-        {"path": "test path", "position": 0, "body": "test body"},
-        {"path": "test path 2", "position": 2, "body": "test body 2"},
+        {"path": "test path", "line": 10, "side": "RIGHT", "body": "test body"},
+        {"path": "test path 2", "line": 22, "side": "LEFT", "body": "test body 2"},
     ]
     git_provider = "github"
 
@@ -26,7 +26,19 @@ def test_create_github_response_ai_provider_dto():
     assert isinstance(dto, ReviewResponseDTO)
     assert isinstance(dto.comments[0], GithubReviewCommentDTO)
     assert dto.general_comment == general_comment
+    assert dto.comments[0].line == 10
+    assert dto.comments[1].side == "LEFT"
     assert dto.comments[1].path == "test path 2"
+
+
+def test_github_response_defaults_to_the_new_side():
+    dto = ReviewResponseDTO.from_request(
+        general_comment="c",
+        comments=[{"path": "p", "line": 1, "body": "b"}],
+        git_provider="github",
+    )
+
+    assert dto.comments[0].side == "RIGHT"
 
 
 def test_create_gitea_response_ai_provider_dto():
@@ -49,8 +61,8 @@ def test_create_gitea_response_ai_provider_dto():
 def test_create_bitbucket_response_ai_provider_dto():
     general_comment = "test comment"
     comments = [
-        {"path": "test path", "lineType": "test lineType", "position": 1, "body": "test body"},
-        {"path": "test path 2", "lineType": "test lineType 2", "position": 2, "body": "test body 2"},
+        {"path": "test path", "lineType": "ADDED", "line": 1, "body": "test body"},
+        {"path": "test path 2", "lineType": "REMOVED", "line": 2, "body": "test body 2"},
     ]
     git_provider = "bitbucket"
 
@@ -60,7 +72,8 @@ def test_create_bitbucket_response_ai_provider_dto():
     assert isinstance(dto.comments[0], BitBucketReviewCommentDTO)
     assert dto.general_comment == general_comment
     assert dto.comments[1].path == "test path 2"
-    assert dto.comments[0].lineType == "test lineType"
+    assert dto.comments[0].lineType == "ADDED"
+    assert dto.comments[1].line == 2
 
 
 def test_create_unknown_response_ai_provider_dto():

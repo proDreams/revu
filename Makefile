@@ -15,5 +15,8 @@ run:
 	uv run app
 
 # PROD
-run_prod: install
-	$(MAKE) run
+# `--frozen --no-sync` reuses the environment baked into the image at build
+# time. The previous `run_prod: install` re-resolved dependencies (without
+# --frozen) and needed the network on every container start.
+run_prod:
+	uv run --frozen --no-sync app

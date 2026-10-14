@@ -5,3 +5,5 @@ logs/
 settings.yaml
 .coverage
 revu_logs/
+docs/
+.codegraph/
