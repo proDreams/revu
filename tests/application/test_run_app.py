@@ -17,30 +17,35 @@ def test_run_calls_run_app(monkeypatch):
     assert called["run_app"]
 
 
-def test_run_app_starts_uvicorn_with_correct_params(monkeypatch):
+def test_run_app_starts_uvicorn_with_configured_app_settings(monkeypatch, settings):
     called = {}
 
     def fake_run(app, **kwargs):
         called["app"] = app
         called["kwargs"] = kwargs
 
+    monkeypatch.setattr("revu.application.app.load_settings", lambda: settings)
     monkeypatch.setattr("revu.application.app.uvicorn.run", fake_run)
 
     run_app()
 
     assert isinstance(called["app"], FastAPI)
     kwargs = called["kwargs"]
-    assert kwargs["host"] == "0.0.0.0"
-    assert kwargs["port"] == 8000
+    assert kwargs["host"] == settings.app.host
+    assert kwargs["port"] == settings.app.port
     assert kwargs["loop"] == "asyncio"
     assert kwargs["log_config"] is None
 
 
-def test_run_app_honours_configured_host_and_port(monkeypatch, settings):
-    called = {}
-    settings.set("APP_HOST", "127.0.0.1")
-    settings.set("APP_PORT", 9001)
+def test_run_app_honours_a_custom_address(monkeypatch, settings):
+    from dataclasses import replace
 
+    from revu.application.entities.config import AppSettings
+
+    called = {}
+    custom = replace(settings, app=AppSettings(host="127.0.0.1", port=9001))
+
+    monkeypatch.setattr("revu.application.app.load_settings", lambda: custom)
     monkeypatch.setattr("revu.application.app.uvicorn.run", lambda app, **kwargs: called.update(kwargs))
 
     run_app()

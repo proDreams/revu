@@ -1,15 +1,16 @@
 from gigachat.client import GigaChatAsyncClient as GigaChat
 from gigachat.models import Chat
 
-from revu.application.config import get_settings
+from revu.application.entities.config import AIProfileConfig
 
 
 class GigaChatAdapter:
-    def __init__(self) -> None:
+    def __init__(self, profile: AIProfileConfig) -> None:
+        self.profile = profile
         self._gigachat_client = GigaChat(
-            credentials=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,  # type: ignore
-            scope=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_SCOPE,  # type: ignore
-            model=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL,  # type: ignore
+            credentials=profile.api_key,
+            scope=profile.scope,
+            model=profile.model,
         )
 
     async def get_chat_response(self, payload: Chat) -> str:

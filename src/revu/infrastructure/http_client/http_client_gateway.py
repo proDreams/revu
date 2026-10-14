@@ -4,7 +4,8 @@ from typing import Any, Literal
 
 import httpx
 
-from revu.application.config import get_logger, get_settings
+from revu.application.config import get_logger
+from revu.application.entities.config import HttpSettings
 from revu.application.entities.exceptions.http_gateway_exceptions import (
     HTTPGatewayAttemptLimitExceeded,
     HttpGatewayError,
@@ -48,11 +49,11 @@ class HttpClientGateway:
     container shuts down.
     """
 
-    def __init__(self) -> None:
-        self.timeout = get_settings().HTTP_CLIENT_TIMEOUT
+    def __init__(self, settings: HttpSettings) -> None:
+        self.timeout = settings.timeout
         self._client = httpx.AsyncClient(timeout=self.timeout)
-        self.attempts = get_settings().HTTP_CLIENT_REQUEST_ATTEMPTS
-        self.backoff = get_settings().get("HTTP_CLIENT_RETRY_BACKOFF", 0.5)
+        self.attempts = settings.attempts
+        self.backoff = settings.backoff
 
     def _retryable_statuses(self, method: str) -> frozenset[int]:
         return RETRYABLE_STATUSES if method in IDEMPOTENT_METHODS else RETRYABLE_NON_IDEMPOTENT_STATUSES

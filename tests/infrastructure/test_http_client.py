@@ -4,12 +4,16 @@ import httpx
 import pytest
 
 import revu.infrastructure.http_client.http_client_gateway as gateway_module
+from revu.application.entities.config import HttpSettings
 from revu.application.entities.exceptions.http_gateway_exceptions import (
     HTTPGatewayAttemptLimitExceeded,
     HttpGatewayError,
 )
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 from revu.infrastructure.http_client.http_client_gateway import _sleep as real_sleep
+
+# No retry backoff, so retry tests do not actually wait.
+HTTP_SETTINGS = HttpSettings(timeout=30.0, attempts=3, backoff=0.0)
 
 
 @pytest.fixture(autouse=True)
@@ -26,7 +30,7 @@ def _gateway(client_request) -> HttpClientGateway:
     A list is consumed in order; a bare exception is raised on every call; a
     bare response is returned on every call.
     """
-    gateway = HttpClientGateway()
+    gateway = HttpClientGateway(settings=HTTP_SETTINGS)
 
     if isinstance(client_request, list) or isinstance(client_request, BaseException):
         gateway._client.request = AsyncMock(side_effect=client_request)
@@ -213,7 +217,7 @@ async def test_non_json_response_is_not_retried():
 
 
 async def test_post_calls_request_with_correct_args(monkeypatch):
-    gateway = HttpClientGateway()
+    gateway = HttpClientGateway(settings=HTTP_SETTINGS)
     mock_request = AsyncMock(return_value={"ok": True})
     gateway._request = mock_request
 
@@ -233,7 +237,7 @@ async def test_post_calls_request_with_correct_args(monkeypatch):
 
 
 async def test_get_calls_request_with_correct_args(monkeypatch):
-    gateway = HttpClientGateway()
+    gateway = HttpClientGateway(settings=HTTP_SETTINGS)
     mock_request = AsyncMock(return_value={"ok": True})
     gateway._request = mock_request
 

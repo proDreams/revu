@@ -5,6 +5,66 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-14
+
+### Breaking changes
+
+- **One instance now serves many git providers.** The configuration moved from a
+  single `GIT_PROVIDER_CONFIG` / `AI_PROVIDER_CONFIG` pair to a map of git
+  connections (`GIT_PROVIDERS`) and named AI profiles (`AI_PROVIDERS`) with a
+  `DEFAULT_AI_PROVIDER`. A 1.x settings file is rejected at startup with a
+  message explaining what moved; see the migration table in `README.md`.
+- **Webhook URLs changed.** `POST /webhooks/github`, `/webhooks/gitea` and
+  `/webhooks/bitbucket` are gone. Each connection now has its own URL,
+  `POST /webhooks/<connection_key>`, where the host type comes from the
+  connection configuration. Update the webhook URL on the git host side.
+- **`GIT_PROVIDER_URL` is required for Gitea and Bitbucket** and optional for
+  GitHub (omit it for github.com, or point it at a GitHub Enterprise Server REST
+  root including `/api/v3`). `AI_PROVIDER_BASE_URL` is required for
+  `openai_compatible` and `AI_PROVIDER_FOLDER_ID` for `yandexgpt`.
+- **AI providers are addressed by profile name.** A connection naming an unknown
+  profile stops startup instead of silently falling back to the default model.
+- The `/webhooks` routes no longer accept a payload whose host does not match the
+  configured `GIT_PROVIDER`: it answers `422` and logs which connection to check.
+  Previously such a delivery was often acknowledged as "review not needed".
+
+### Added
+
+- `DEFAULT_AI_PROVIDER` plus an optional per-connection `AI_PROVIDER` override:
+  several git connections may share one AI profile, and one of them may use
+  another model.
+- Per-connection `REVIEW_MODE`, `SYSTEM_PROMPT` and `MAX_CONCURRENT_REVIEWS`,
+  each falling back to the global value.
+- Per-connection review budgets: a burst of pushes to one repository can no
+  longer occupy the review slots of every other connection.
+- A startup summary of the configured connections and the default AI profile, so
+  a typo in a connection key is visible in the log (`GET /health` still says
+  nothing about the configuration).
+- GitHub Enterprise Server support through `GIT_PROVIDER_URL`.
+- A typed configuration model: every consumer receives frozen dataclasses instead
+  of reading a global settings object, and validation errors name the offending
+  key (`GIT_PROVIDERS.gitea-int.GIT_PROVIDER_URL is required and must not be
+  empty`).
+- A warning when two connections share the same host and base URL, which would
+  review a repository twice.
+
+### Changed
+
+- `AIProviderProtocol` takes a `ReviewTask` (`diff`, `git_host`, `pr_title`,
+  `pr_body`, `system_prompt`) instead of loose arguments. AI ports no longer hold
+  the system prompt, which is what allows one profile to serve connections with
+  different prompts.
+- `GitProviderProtocol`, `ReviewResponseDTO.from_request` and the git ports now
+  speak of `git_host` rather than `git_provider`, matching what the value is.
+- Infrastructure no longer calls `get_settings()`: 24 call sites across 15 files
+  were replaced by constructor injection.
+- YandexGPT now fails at startup when `AI_PROVIDER_FOLDER_ID` is missing instead
+  of failing on the first review.
+- The logger reads only the logging keys, so importing the configuration module
+  still never requires a settings file to exist.
+
+[2.0.0]: https://github.com/proDreams/revu/compare/1.7.0...2.0.0
+
 ## [1.7.0] - 2026-10-14
 
 ### Breaking changes

@@ -1,51 +1,54 @@
-import asyncio
+from dataclasses import replace
 
 from unidiff import PatchSet
 
-from revu.application.config import get_settings
 from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
 from revu.application.entities.exceptions.webhook_service_exceptions import (
     ReviewModeException,
 )
+from revu.application.entities.tenant import TenantContext
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
-from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
-from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
-
-DEFAULT_MAX_CONCURRENT_REVIEWS = 3
+from revu.domain.entities.dto.review_task_dto import ReviewTask
 
 
 class WebhookService:
-    def __init__(self, ai_port: AIProviderProtocol, git_port: GitProviderProtocol) -> None:
-        self.ai_port = ai_port
-        self.git_port = git_port
-        self._review_slots = asyncio.Semaphore(
-            int(get_settings().get("MAX_CONCURRENT_REVIEWS", DEFAULT_MAX_CONCURRENT_REVIEWS))
-        )
+    """Runs one review for one tenant.
 
-    async def process_webhook(self, webhook_data: PullRequestEventDTO) -> None:
-        """Run one review, waiting for a free slot if too many are in flight.
+    Stateless by design: the git port, the AI port, the review mode, the prompt
+    and the concurrency budget all come from the :class:`TenantContext`, which is
+    why a single instance can serve every configured connection.
+    """
+
+    async def process_webhook(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
+        """Run one review, waiting for a free slot of this connection.
 
         Reviews run in background tasks, so without a bound a burst of pushes
         would start an unlimited number of them, each holding a full diff in
-        memory and calling the AI provider. Waiting here only delays a review
-        whose response has already been sent.
+        memory and calling the AI provider. The budget is per connection, so a
+        noisy repository cannot starve the others.
         """
-        async with self._review_slots:
-            await self._run_review(webhook_data=webhook_data)
+        async with tenant.review_slots:
+            await self._run_review(tenant=tenant, webhook_data=webhook_data)
 
-    async def _run_review(self, webhook_data: PullRequestEventDTO) -> None:
-        diff = await self.git_port.fetch_diff(
+    async def _run_review(self, tenant: TenantContext, webhook_data: PullRequestEventDTO) -> None:
+        diff = await tenant.git_port.fetch_diff(
             repo=webhook_data.repo_full_name,
             index=webhook_data.pr_number,
         )
 
-        match get_settings().REVIEW_MODE:
-            case ReviewModeEnum.COMMENT:
-                str_review = await self.ai_port.get_comment_response(
-                    diff=diff, pr_title=webhook_data.pr_title, pr_body=webhook_data.pr_body
-                )
+        task = ReviewTask(
+            diff=diff,
+            git_host=tenant.config.host,
+            pr_title=webhook_data.pr_title,
+            pr_body=webhook_data.pr_body,
+            system_prompt=tenant.config.system_prompt,
+        )
 
-                await self.git_port.send_comment(
+        match tenant.config.review_mode:
+            case ReviewModeEnum.COMMENT:
+                str_review = await tenant.ai_port.get_comment_response(task)
+
+                await tenant.git_port.send_comment(
                     repo_owner=webhook_data.repo_full_name,
                     review=str_review,
                     index=webhook_data.pr_number,
@@ -53,14 +56,9 @@ class WebhookService:
             case ReviewModeEnum.INLINE:
                 annotated_diff = self.annotate_diff(diff_text=diff)
 
-                dto_review = await self.ai_port.get_inline_response(
-                    diff=annotated_diff,
-                    git_provider=get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER,
-                    pr_title=webhook_data.pr_title,
-                    pr_body=webhook_data.pr_body,
-                )
+                dto_review = await tenant.ai_port.get_inline_response(replace(task, diff=annotated_diff))
 
-                await self.git_port.send_inline(
+                await tenant.git_port.send_inline(
                     sha=webhook_data.commit_sha,
                     repo_owner=webhook_data.repo_full_name,
                     review=dto_review,

@@ -8,35 +8,38 @@ from revu.domain.entities.dto.ai_provider_dto import (
     ReviewResponseDTO,
 )
 from revu.infrastructure.git_providers.github.github_port import GithubPort
+from tests.conftest import GITHUB_TOKEN, make_connection
 
 pytestmark = pytest.mark.unit
 
 
-def test_get_headers(settings):
-    port = GithubPort(http_client=AsyncMock())
-
-    headers = port._get_headers()
-
-    assert isinstance(headers, dict)
-    assert headers["Authorization"] == f"token {settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_USER_TOKEN}"
+def _port(http_client: AsyncMock, **connection) -> GithubPort:
+    return GithubPort(http_client=http_client, config=make_connection(**connection))
 
 
-def test_defaults_to_github_com(settings):
+def test_get_headers():
+    headers = _port(AsyncMock())._get_headers()
+
+    assert headers == {"Authorization": f"token {GITHUB_TOKEN}"}
+
+
+def test_defaults_to_github_com():
     """github.com is used when no self-hosted base URL is configured."""
-    settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER_URL"] = None
-
-    port = GithubPort(http_client=AsyncMock())
-
-    assert port._url("repos/o/r") == "https://api.github.com/repos/o/r"
+    assert _port(AsyncMock(), base_url=None)._url("repos/o/r") == "https://api.github.com/repos/o/r"
 
 
-async def test_fetch_diff_decodes_bytes_to_str(settings):
+def test_github_enterprise_base_url():
+    port = _port(AsyncMock(), base_url="https://ghe.example.com/api/v3")
+
+    assert port._url("repos/o/r/pulls/1.diff") == "https://ghe.example.com/api/v3/repos/o/r/pulls/1.diff"
+
+
+async def test_fetch_diff_decodes_bytes_to_str():
     """The gateway returns raw bytes; the port owes the protocol a str diff."""
     http_client = AsyncMock()
     http_client.get.return_value = b"test diff"
 
-    settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER_URL"] = "https://ghe.example.com/api/v3"
-    port = GithubPort(http_client=http_client)
+    port = _port(http_client, base_url="https://ghe.example.com/api/v3")
 
     result = await port.fetch_diff(repo="test", index=1)
 
@@ -46,33 +49,19 @@ async def test_fetch_diff_decodes_bytes_to_str(settings):
     assert http_client.get.await_args.kwargs["expect_json"] is False
 
 
-def test_github_enterprise_base_url(settings):
-    settings["GIT_PROVIDER_CONFIG"]["GIT_PROVIDER_URL"] = "https://ghe.example.com/api/v3"
-
-    port = GithubPort(http_client=AsyncMock())
-
-    assert port._url("repos/o/r/pulls/1.diff") == "https://ghe.example.com/api/v3/repos/o/r/pulls/1.diff"
-
-
-async def test_send_comment(settings):
+async def test_send_comment():
     http_client = AsyncMock(post=AsyncMock())
-    port = GithubPort(http_client=http_client)
 
-    repo_owner = "test"
-    review = "test review"
-    index = 1
+    await _port(http_client).send_comment(repo_owner="test", review="test review", index=1)
 
-    await port.send_comment(repo_owner=repo_owner, review=review, index=index)
-    http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload={"body": review})
+    http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload={"body": "test review"})
 
 
 async def test_send_inline_sends_line_and_side():
     """GitHub anchors inline comments by line + side, not by the deprecated position."""
     http_client = AsyncMock(post=AsyncMock())
-    port = GithubPort(http_client=http_client)
+    port = _port(http_client)
 
-    sha = "test sha"
-    repo_owner = "test"
     review = ReviewResponseDTO(
         general_comment="test review",
         comments=[
@@ -80,20 +69,12 @@ async def test_send_inline_sends_line_and_side():
             GithubReviewCommentDTO(path="app.py", line=4, side="LEFT", body="second"),
         ],
     )
-    index = 1
 
-    payload = {
-        "commit_id": sha,
-        "body": review.general_comment,
-        "comments": [asdict(comment) for comment in review.comments],
-    }
+    await port.send_inline(sha="test sha", repo_owner="test", review=review, index=1)
 
-    await port.send_inline(sha=sha, repo_owner=repo_owner, review=review, index=index)
-    http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload=payload)
-
-    sent_comments = http_client.post.await_args.kwargs["payload"]["comments"]
-    assert sent_comments == [
-        {"path": "app.py", "line": 10, "body": "first", "side": "RIGHT"},
-        {"path": "app.py", "line": 4, "body": "second", "side": "LEFT"},
-    ]
-    assert "position" not in sent_comments[0]
+    payload = http_client.post.await_args.kwargs["payload"]
+    assert payload["commit_id"] == "test sha"
+    assert payload["body"] == "test review"
+    assert payload["comments"] == [asdict(comment) for comment in review.comments]
+    assert payload["comments"][0] == {"path": "app.py", "line": 10, "body": "first", "side": "RIGHT"}
+    assert "position" not in payload["comments"][0]

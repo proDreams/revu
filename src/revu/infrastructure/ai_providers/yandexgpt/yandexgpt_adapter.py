@@ -1,19 +1,19 @@
 from yandex_ai_studio_sdk import AsyncAIStudio
 
-from revu.application.config import get_settings
+from revu.application.entities.config import AIProfileConfig
 from revu.application.entities.exceptions.ai_adapters_exceptions import NoAIResponse
 
 
 class YandexGPTAdapter:
-    def __init__(self) -> None:
-        self._ai_provider_config = get_settings().AI_PROVIDER_CONFIG
+    def __init__(self, profile: AIProfileConfig) -> None:
+        self.profile = profile
         self._yandexgpt_client = AsyncAIStudio(
-            folder_id=self._ai_provider_config.AI_PROVIDER_FOLDER_ID,
-            auth=self._ai_provider_config.AI_PROVIDER_API_KEY,  # type: ignore
+            folder_id=profile.folder_id,
+            auth=profile.api_key,
         )
 
     async def get_chat_response(self, messages: list[dict[str, str]]) -> str:
-        model = await self._yandexgpt_client.models.completions(self._ai_provider_config.AI_PROVIDER_MODEL)
+        model = await self._yandexgpt_client.models.completions(self.profile.model)
 
         response = await model.run(messages)
 

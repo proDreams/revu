@@ -1,19 +1,17 @@
 from dishka import Provider, Scope, provide
 
 from revu.application.services.webhook_service import WebhookService
-from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
-from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 
 
 class WebhookServiceProvider(Provider):
-    """Application service orchestrating a single review."""
+    """Stateless review orchestrator.
+
+    It holds no provider of its own: the connection and its AI profile arrive
+    with each call, so one instance serves every tenant.
+    """
 
     scope = Scope.APP
 
     @provide
-    def webhook_service(
-        self,
-        ai_port: AIProviderProtocol,
-        git_port: GitProviderProtocol,
-    ) -> WebhookService:
-        return WebhookService(ai_port=ai_port, git_port=git_port)
+    def webhook_service(self) -> WebhookService:
+        return WebhookService()

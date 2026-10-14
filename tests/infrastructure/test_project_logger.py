@@ -14,13 +14,13 @@ def _cleanup_logger(logger: logging.Logger) -> None:
         handler.close()
 
 
-def test_project_logger_creates_handlers(settings, tmp_path):
+def test_project_logger_creates_handlers(log_settings, tmp_path):
     root = logging.getLogger()
     for handler in list(root.handlers):
         root.removeHandler(handler)
         handler.close()
 
-    project_logger = ProjectLogger(settings=settings)
+    project_logger = ProjectLogger(settings=log_settings)
     logger = project_logger.get_logger("app.test")
 
     try:
@@ -28,7 +28,7 @@ def test_project_logger_creates_handlers(settings, tmp_path):
         assert len(logger.handlers) == 2
         assert any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
         assert project_logger.log_path.exists()
-        assert (project_logger.log_path / settings.LOG_FILE).exists()
+        assert (project_logger.log_path / log_settings.file).exists()
     finally:
         _cleanup_logger(logger)
         pref_logger = logging.getLogger("pref")

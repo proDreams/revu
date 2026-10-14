@@ -8,8 +8,10 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from revu.application.config import get_logger, get_settings, validate_settings
+from revu.application.config import get_logger, load_settings
 from revu.application.di import create_container
+from revu.application.entities.config import Settings, UnknownConnectionError
+from revu.application.registry.git_connections import GitConnectionRegistry
 from revu.application.services.webhook_service import WebhookService
 from revu.domain.entities.exceptions.base import CoreException
 from revu.presentation.health import health_router
@@ -29,6 +31,12 @@ async def _review_not_needed_handler(_: Request, exc: ReviewNotNeededError) -> J
     return JSONResponse(status_code=200, content={"detail": exc.reason})
 
 
+async def _unknown_connection_handler(_: Request, exc: UnknownConnectionError) -> JSONResponse:
+    """A webhook for a connection that is not configured is a plain 404."""
+    logger.warning("webhook for unknown connection: %s", exc)
+    return JSONResponse(status_code=404, content={"detail": "Unknown webhook connection"})
+
+
 async def _core_exception_handler(_: Request, exc: CoreException) -> JSONResponse:
     """Turn an expected domain failure into a 500 without leaking internals."""
     logger.exception("Unhandled application error: %s", exc)
@@ -37,11 +45,19 @@ async def _core_exception_handler(_: Request, exc: CoreException) -> JSONRespons
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # Validate the configuration, then resolve the whole graph once, so a
-    # misconfigured provider fails at startup rather than on the first webhook.
-    validate_settings()
+    # Resolving Settings parses and validates the configuration; resolving the
+    # service afterwards builds the rest of the graph. A misconfigured
+    # connection therefore fails at startup, not on the first webhook.
     container = app.state.dishka_container
+    settings = await container.get(Settings)
     await container.get(WebhookService)
+
+    connections = await container.get(GitConnectionRegistry)
+    logger.info(
+        "configured git connections: %s; default AI profile: %s",
+        ", ".join(f"{key} ({host})" for key, host in connections.hosts().items()),
+        settings.default_ai_provider,
+    )
 
     try:
         yield
@@ -61,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.add_exception_handler(ValidationError, _validation_error_handler)
     app.add_exception_handler(ReviewNotNeededError, _review_not_needed_handler)
+    app.add_exception_handler(UnknownConnectionError, _unknown_connection_handler)
     app.add_exception_handler(CoreException, _core_exception_handler)
     setup_dishka(container=create_container(), app=app)
 
@@ -68,12 +85,12 @@ def create_app() -> FastAPI:
 
 
 def run_app():
-    settings = get_settings()
+    settings = load_settings()
 
     uvicorn.run(
         create_app(),
-        host=settings.get("APP_HOST", "0.0.0.0"),
-        port=settings.get("APP_PORT", 8000),
+        host=settings.app.host,
+        port=settings.app.port,
         loop="asyncio",
         log_config=None,
     )

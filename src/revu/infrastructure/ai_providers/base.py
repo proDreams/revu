@@ -4,7 +4,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from revu.application.config import get_settings
 from revu.application.entities.default_prompts import (
     BITBUCKET_INLINE_PROMPT,
     COMMENT_PROMPT,
@@ -12,7 +11,6 @@ from revu.application.entities.default_prompts import (
     GITEA_INLINE_PROMPT,
     GITHUB_INLINE_PROMPT,
 )
-from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
     UnknownGitProvider,
@@ -23,6 +21,8 @@ from revu.application.entities.schemas.ai_providers_schemas.openai_schemas impor
     GithubReviewResponse,
     ReviewResponse,
 )
+from revu.domain.entities.dto.review_task_dto import ReviewTask
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.protocols.ai_provider_protocol import AIProviderProtocol
 
 # ```json\n{...}\n``` / ```\n{...}\n``` / ```{...}``` — the opening fence may
@@ -31,13 +31,15 @@ _FENCED_JSON_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(?P<body>.*?)(?:```)?\s*$", 
 
 
 class BaseAIPort(AIProviderProtocol):
-    def __init__(self):
-        system_prompt = get_settings().SYSTEM_PROMPT
-        self.system_prompt = str(system_prompt).strip() if system_prompt else None
+    """Prompt and output-schema selection shared by every AI vendor.
+
+    Deliberately holds no configuration: a port instance is shared between git
+    connections, so the prompt arrives with each :class:`ReviewTask`.
+    """
 
     @staticmethod
-    def _get_prompt(git_provider: str) -> str:
-        match git_provider:
+    def _get_prompt(git_host: GitProviderEnum) -> str:
+        match git_host:
             case GitProviderEnum.GITHUB:
                 return GITHUB_INLINE_PROMPT
             case GitProviderEnum.GITEA:
@@ -52,33 +54,34 @@ class BaseAIPort(AIProviderProtocol):
         """Return the default comment prompt"""
         return COMMENT_PROMPT
 
-    def _comment_instructions(self) -> str:
+    def _comment_instructions(self, task: ReviewTask) -> str:
         """Instructions for REVIEW_MODE=comment, extended by SYSTEM_PROMPT."""
-        return self._with_system_prompt(self._get_comment_prompt())
+        return self._with_system_prompt(task.system_prompt, self._get_comment_prompt())
 
-    def _inline_instructions(self, git_provider: str) -> str:
+    def _inline_instructions(self, task: ReviewTask) -> str:
         """Instructions for REVIEW_MODE=inline, extended by SYSTEM_PROMPT.
 
         ``SYSTEM_PROMPT`` is prepended rather than substituted: the inline
         prompt ends with the output schema, which providers such as GigaChat
         and YandexGPT rely on to emit parseable JSON.
         """
-        return self._with_system_prompt(self._get_prompt(git_provider))
+        return self._with_system_prompt(task.system_prompt, self._get_prompt(task.git_host))
 
-    def _with_system_prompt(self, prompt: str) -> str:
-        if not self.system_prompt:
+    @staticmethod
+    def _with_system_prompt(system_prompt: str | None, prompt: str) -> str:
+        if not system_prompt:
             return prompt
 
-        return f"{self.system_prompt}\n\n{prompt}"
+        return f"{system_prompt}\n\n{prompt}"
 
     @staticmethod
-    def _get_diff_prompt(pr_title: str, pr_body: str | None, diff: str) -> str:
-        """Format the diff prompt with provided parameters"""
-        return DIFF_PROMPT.format(pr_title=pr_title, pr_body=pr_body, diff=diff)
+    def _get_diff_prompt(task: ReviewTask) -> str:
+        """Format the diff prompt with the task parameters"""
+        return DIFF_PROMPT.format(pr_title=task.pr_title, pr_body=task.pr_body, diff=task.diff)
 
     @staticmethod
-    def _get_response_model(git_provider: str) -> type[ReviewResponse]:
-        match git_provider:
+    def _get_response_model(git_host: GitProviderEnum) -> type[ReviewResponse]:
+        match git_host:
             case GitProviderEnum.GITHUB:
                 return GithubReviewResponse
             case GitProviderEnum.GITEA:

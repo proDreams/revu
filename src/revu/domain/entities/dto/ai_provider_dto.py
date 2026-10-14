@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.exceptions.git_provider_exceptions import (
     UnknownGitProviderException,
 )
@@ -39,19 +40,25 @@ class ReviewResponseDTO:
     comments: list[GithubReviewCommentDTO | GiteaReviewCommentDTO | BitBucketReviewCommentDTO]
 
     @classmethod
-    def from_request(cls, general_comment: str, comments: list[dict], git_provider: str) -> "ReviewResponseDTO":
-        match git_provider:
-            case "github":
+    def from_request(
+        cls,
+        general_comment: str,
+        comments: list[dict],
+        git_host: GitProviderEnum,
+    ) -> "ReviewResponseDTO":
+        """Build the host-specific comment objects the git port expects."""
+        match git_host:
+            case GitProviderEnum.GITHUB:
                 return cls(
                     general_comment=general_comment,
                     comments=[GithubReviewCommentDTO(**comment) for comment in comments],
                 )
-            case "gitea":
+            case GitProviderEnum.GITEA:
                 return cls(
                     general_comment=general_comment,
                     comments=[GiteaReviewCommentDTO(**comment) for comment in comments],
                 )
-            case "bitbucket":
+            case GitProviderEnum.BITBUCKET:
                 return cls(
                     general_comment=general_comment,
                     comments=[BitBucketReviewCommentDTO(**comment) for comment in comments],

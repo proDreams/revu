@@ -1,6 +1,6 @@
 from urllib.parse import urljoin
 
-from revu.application.config import get_settings
+from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import (
     BitBucketReviewCommentDTO,
     ReviewResponseDTO,
@@ -14,17 +14,17 @@ from revu.infrastructure.http_client.http_client_gateway import HttpClientGatewa
 
 
 class BitbucketPort(GitProviderProtocol):
-    def __init__(self, http_client: HttpClientGateway) -> None:
+    def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
         self.http_client = http_client
-        self.git_conf = get_settings().GIT_PROVIDER_CONFIG
-        self.bitbucket_token = self.git_conf.GIT_PROVIDER_USER_TOKEN  # type: ignore
-        self.bitbucket_url = self.git_conf.GIT_PROVIDER_URL  # type: ignore
+        self.config = config
+        self.bitbucket_token = config.user_token
+        self.bitbucket_url = config.resolved_base_url
 
     def _get_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.bitbucket_token}"}
 
     def _url(self, path: str) -> str:
-        return urljoin(self.bitbucket_url.rstrip("/") + "/", path)  # type: ignore
+        return urljoin(self.bitbucket_url.rstrip("/") + "/", path)
 
     async def fetch_diff(self, repo: str, index: int) -> str:
         """Fetch every diff page and render it as one unified diff.

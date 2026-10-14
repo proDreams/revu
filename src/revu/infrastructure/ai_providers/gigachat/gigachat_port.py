@@ -1,13 +1,13 @@
 from gigachat.models import Chat, Messages, MessagesRole
 
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.domain.entities.dto.review_task_dto import ReviewTask
 from revu.infrastructure.ai_providers.base import BaseAIPort
 from revu.infrastructure.ai_providers.gigachat.gigachat_adapter import GigaChatAdapter
 
 
 class GigaChatPort(BaseAIPort):
     def __init__(self, adapter: GigaChatAdapter) -> None:
-        super().__init__()
         self.adapter = adapter
 
     @staticmethod
@@ -19,22 +19,20 @@ class GigaChatPort(BaseAIPort):
             ]
         )
 
-    async def get_comment_response(self, diff: str, pr_title: str, pr_body: str | None = None) -> str:
+    async def get_comment_response(self, task: ReviewTask) -> str:
         chat = self._get_chat(
-            system_prompt=self._comment_instructions(),
-            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            system_prompt=self._comment_instructions(task),
+            user_prompt=self._get_diff_prompt(task),
         )
 
         return await self.adapter.get_chat_response(payload=chat)
 
-    async def get_inline_response(
-        self, diff: str, git_provider: str, pr_title: str, pr_body: str | None = None
-    ) -> ReviewResponseDTO:
-        response_model = self._get_response_model(git_provider)
+    async def get_inline_response(self, task: ReviewTask) -> ReviewResponseDTO:
+        response_model = self._get_response_model(task.git_host)
 
         chat = self._get_chat(
-            system_prompt=self._inline_instructions(git_provider),
-            user_prompt=self._get_diff_prompt(pr_title=pr_title, pr_body=pr_body, diff=diff),
+            system_prompt=self._inline_instructions(task),
+            user_prompt=self._get_diff_prompt(task),
         )
 
         output = await self.adapter.get_chat_response(payload=chat)
@@ -44,5 +42,9 @@ class GigaChatPort(BaseAIPort):
         return ReviewResponseDTO.from_request(
             general_comment=payload["general_comment"],
             comments=payload["comments"],
-            git_provider=git_provider,
+            git_host=task.git_host,
         )
+
+    async def aclose(self) -> None:
+        """This port owns its SDK transport, so the registry must close it."""
+        await self.adapter.aclose()

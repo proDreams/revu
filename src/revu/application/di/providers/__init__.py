@@ -1,17 +1,19 @@
 from dishka import Provider
 
-from revu.application.di.providers.ai import AIProviderProvider
-from revu.application.di.providers.git import GitProviderProvider
-from revu.application.di.providers.http import HttpProvider
+from revu.application.di.providers.ai import AIProfileProvider
+from revu.application.di.providers.app import AppProvider
+from revu.application.di.providers.git import GitConnectionProvider
 from revu.application.di.providers.service import WebhookServiceProvider
+from revu.application.di.providers.tenant import TenantProvider
 
 
 def get_providers() -> list[Provider]:
     """Return every provider grouped by logical area."""
     return [
-        HttpProvider(),
-        GitProviderProvider(),
-        AIProviderProvider(),
+        AppProvider(),
+        GitConnectionProvider(),
+        AIProfileProvider(),
+        TenantProvider(),
         WebhookServiceProvider(),
     ]
 

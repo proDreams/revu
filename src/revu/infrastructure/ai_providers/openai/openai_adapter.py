@@ -4,18 +4,19 @@ from openai import AsyncClient
 from openai.types.responses import ParsedResponse
 from pydantic import BaseModel
 
-from revu.application.config import get_settings
+from revu.application.entities.config import AIProfileConfig
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class OpenAIAdapter:
-    def __init__(self, http_client: HttpClientGateway) -> None:
+    def __init__(self, http_client: HttpClientGateway, profile: AIProfileConfig) -> None:
         self._http_client = http_client
+        self.profile = profile
         self._openai_client = AsyncClient(
-            api_key=get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_API_KEY,  # type: ignore
+            api_key=profile.api_key,
             http_client=self._http_client.get_client(),
         )
-        self.model = get_settings().AI_PROVIDER_CONFIG.AI_PROVIDER_MODEL  # type: ignore
+        self.model = profile.model
 
     async def get_chat_response(
         self,

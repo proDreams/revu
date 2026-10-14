@@ -7,14 +7,17 @@ from revu.domain.entities.dto.ai_provider_dto import (
     GithubReviewCommentDTO,
     ReviewResponseDTO,
 )
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.exceptions.git_provider_exceptions import (
     UnsupportedReviewCommentException,
 )
 from revu.infrastructure.git_providers.bitbucket.bitbucket_port import BitbucketPort
+from tests.conftest import make_connection
 
 pytestmark = pytest.mark.unit
 
 COMMIT_SHA = "e0a85d5a2275d8e85cbafcc0ec730e51266c1925"
+BITBUCKET_URL = "https://bitbucket.internal"
 
 DIFF_PAGE = {
     "diffs": [
@@ -39,28 +42,36 @@ DIFF_PAGE = {
 }
 
 
-def test_get_headers(settings):
-    port = BitbucketPort(http_client=AsyncMock())
+def _port(http_client: AsyncMock, **connection) -> BitbucketPort:
+    config = make_connection(
+        key="bb-client",
+        host=GitProviderEnum.BITBUCKET,
+        user_token="bitbucket-token",
+        base_url=BITBUCKET_URL,
+        **connection,
+    )
 
-    assert port._get_headers() == {"Authorization": f"Bearer {settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_USER_TOKEN}"}
+    return BitbucketPort(http_client=http_client, config=config)
 
 
-async def test_fetch_diff_converts_json_diff_to_unified(settings):
+def test_get_headers():
+    assert _port(AsyncMock())._get_headers() == {"Authorization": "Bearer bitbucket-token"}
+
+
+async def test_fetch_diff_converts_json_diff_to_unified():
     http_client = AsyncMock()
     http_client.get.return_value = {**DIFF_PAGE, "isLastPage": True}
 
-    port = BitbucketPort(http_client=http_client)
+    result = await _port(http_client).fetch_diff(repo="PROJ/my-repo", index=42)
 
-    result = await port.fetch_diff(repo="PROJ/my-repo", index=42)
-
-    http_client.get.assert_awaited_once_with(url=ANY, headers=port._get_headers())
+    http_client.get.assert_awaited_once_with(url=ANY, headers=_port(AsyncMock())._get_headers())
     assert "projects/PROJ/my-repo/pull-requests/42/diff" in http_client.get.await_args.kwargs["url"]
     assert "diff --git a/app.py b/app.py" in result
     assert "@@ -1,2 +1,2 @@" in result
     assert "+new" in result
 
 
-async def test_fetch_diff_follows_pagination(settings):
+async def test_fetch_diff_follows_pagination():
     """Only the first page used to be converted, truncating large reviews."""
     second_page = {
         "diffs": [
@@ -83,9 +94,7 @@ async def test_fetch_diff_follows_pagination(settings):
     http_client = AsyncMock()
     http_client.get.side_effect = [{**DIFF_PAGE, "isLastPage": False, "nextPageStart": 1}, second_page]
 
-    port = BitbucketPort(http_client=http_client)
-
-    result = await port.fetch_diff(repo="PROJ/my-repo", index=42)
+    result = await _port(http_client).fetch_diff(repo="PROJ/my-repo", index=42)
 
     assert http_client.get.await_count == 2
     assert "app.py" in result
@@ -94,51 +103,42 @@ async def test_fetch_diff_follows_pagination(settings):
     assert "start=1" in http_client.get.await_args_list[1].kwargs["url"]
 
 
-async def test_fetch_diff_stops_when_the_server_repeats_a_page(settings):
+async def test_fetch_diff_stops_when_the_server_repeats_a_page():
     """A misbehaving server must not make the pagination loop forever."""
     http_client = AsyncMock()
     http_client.get.return_value = {**DIFF_PAGE, "isLastPage": False, "nextPageStart": 0}
 
-    port = BitbucketPort(http_client=http_client)
-
-    result = await port.fetch_diff(repo="PROJ/my-repo", index=42)
+    result = await _port(http_client).fetch_diff(repo="PROJ/my-repo", index=42)
 
     assert http_client.get.await_count == 1
     assert "app.py" in result
 
 
-async def test_fetch_diff_tolerates_a_non_object_page(settings):
+async def test_fetch_diff_tolerates_a_non_object_page():
     http_client = AsyncMock()
     http_client.get.return_value = None
 
-    port = BitbucketPort(http_client=http_client)
-
-    assert await port.fetch_diff(repo="PROJ/my-repo", index=42) == ""
+    assert await _port(http_client).fetch_diff(repo="PROJ/my-repo", index=42) == ""
 
 
-async def test_send_comment(settings):
+async def test_send_comment():
     http_client = AsyncMock(post=AsyncMock())
-    port = BitbucketPort(http_client=http_client)
 
-    await port.send_comment(repo_owner="PROJ/my-repo", review="looks good", index=42)
+    await _port(http_client).send_comment(repo_owner="PROJ/my-repo", review="looks good", index=42)
 
     http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload={"text": "looks good"})
     assert "projects/PROJ/my-repo/pull-requests/42/comments" in http_client.post.await_args.kwargs["url"]
 
 
-async def test_send_inline_anchors_on_comment_line(settings):
+async def test_send_inline_anchors_on_comment_line():
     """The anchor line must be the commented line, not the pull request number."""
     http_client = AsyncMock(post=AsyncMock())
-    port = BitbucketPort(http_client=http_client)
-
     review = ReviewResponseDTO(
         general_comment="overall feedback",
-        comments=[
-            BitBucketReviewCommentDTO(path="app.py", lineType="ADDED", body="fix this", line=17),
-        ],
+        comments=[BitBucketReviewCommentDTO(path="app.py", lineType="ADDED", body="fix this", line=17)],
     )
 
-    await port.send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
+    await _port(http_client).send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
 
     assert http_client.post.await_count == 2
 
@@ -147,21 +147,17 @@ async def test_send_inline_anchors_on_comment_line(settings):
         "text": "fix this",
         "anchor": {"path": "app.py", "lineType": "ADDED", "line": 17, "diffType": "EFFECTIVE"},
     }
-
-    general_payload = http_client.post.await_args_list[1].kwargs["payload"]
-    assert general_payload == {"text": "overall feedback"}
+    assert http_client.post.await_args_list[1].kwargs["payload"] == {"text": "overall feedback"}
 
 
-async def test_send_inline_rejects_foreign_comment_types(settings):
+async def test_send_inline_rejects_foreign_comment_types():
     http_client = AsyncMock(post=AsyncMock())
-    port = BitbucketPort(http_client=http_client)
-
     review = ReviewResponseDTO(
         general_comment="overall feedback",
         comments=[GithubReviewCommentDTO(path="app.py", line=1, body="fix this")],
     )
 
     with pytest.raises(UnsupportedReviewCommentException, match="cannot be published to Bitbucket"):
-        await port.send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
+        await _port(http_client).send_inline(sha=COMMIT_SHA, repo_owner="PROJ/my-repo", review=review, index=42)
 
     http_client.post.assert_not_awaited()

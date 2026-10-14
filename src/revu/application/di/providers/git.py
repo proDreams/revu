@@ -1,34 +1,19 @@
 from dishka import Provider, Scope, provide
 
-from revu.application.config import get_settings
-from revu.application.entities.enums.webhook_routes_enums import GitProviderEnum
-from revu.application.entities.exceptions.webhook_routes_exceptions import (
-    GitProviderException,
-)
-from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
-from revu.infrastructure.git_providers.bitbucket.bitbucket_port import BitbucketPort
-from revu.infrastructure.git_providers.gitea.gitea_port import GiteaPort
-from revu.infrastructure.git_providers.github.github_port import GithubPort
+from revu.application.entities.config import Settings
+from revu.application.registry.git_connections import GitConnectionRegistry
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
-class GitProviderProvider(Provider):
-    """Ports that talk to GitHub / Gitea / Bitbucket.
+class GitConnectionProvider(Provider):
+    """All configured git connections, built once at startup.
 
-    Everything is stateless and config-driven, so a single instance is shared
-    by the whole application.
+    Each connection gets its own port because a port holds credentials and a
+    base URL; they share the application HTTP client.
     """
 
     scope = Scope.APP
 
     @provide
-    def git_port(self, http_gateway: HttpClientGateway) -> GitProviderProtocol:
-        match get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER:
-            case GitProviderEnum.GITHUB:
-                return GithubPort(http_client=http_gateway)
-            case GitProviderEnum.GITEA:
-                return GiteaPort(http_client=http_gateway)
-            case GitProviderEnum.BITBUCKET:
-                return BitbucketPort(http_client=http_gateway)
-            case _:
-                raise GitProviderException("Unknown GIT provider")
+    def git_connections(self, settings: Settings, http_gateway: HttpClientGateway) -> GitConnectionRegistry:
+        return GitConnectionRegistry(settings=settings, http_client=http_gateway)

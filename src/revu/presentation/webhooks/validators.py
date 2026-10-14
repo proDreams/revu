@@ -4,19 +4,35 @@ import json
 from typing import Any
 
 from fastapi import HTTPException
+from pydantic import BaseModel
 from starlette import status
 from starlette.requests import Request
 
-from revu.application.config import get_settings
+from revu.application.config import get_logger
+from revu.application.entities.tenant import TenantContext
+from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
+from revu.domain.entities.exceptions.git_provider_exceptions import (
+    UnknownGitProviderException,
+)
+from revu.presentation.webhooks.mappers import (
+    bitbucket_to_domain,
+    gitea_to_domain,
+    github_to_domain,
+)
 from revu.presentation.webhooks.schemas.github_schemas import (
     BitBucketRawPullRequestWebhook,
     GiteaPullRequestWebhook,
     GithubPullRequestWebhook,
 )
 
+logger = get_logger(name=__name__)
+
 # Delivery kinds each git host distinguishes for pull requests.
 PULL_REQUEST_EVENT = "pull_request"
+GITHUB_EVENT_HEADER = "x-github-event"
+GITEA_EVENT_HEADER = "x-gitea-event"
 
 # Bitbucket Data Center delivers `pr:opened` for a new pull request and
 # `pr:from_ref_updated` when commits are pushed to its source branch. Those are
@@ -44,7 +60,7 @@ class ReviewNotNeededError(Exception):
         super().__init__(reason)
 
 
-def _verify_signature(request: Request, body: bytes) -> None:
+def _verify_signature(request: Request, body: bytes, secret_token: str) -> None:
     """Reject the request unless one of its HMAC-SHA256 signatures matches.
 
     Every present signature header is tried: hosts can send more than one (Gitea
@@ -52,8 +68,7 @@ def _verify_signature(request: Request, body: bytes) -> None:
     on the first header that happens to be present broke valid deliveries whose
     matching header came second.
     """
-    secret_token = get_settings().GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN
-    expected_signature = hmac.new(str(secret_token).encode("utf-8"), body, hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(secret_token.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
     found_signature_header = False
 
@@ -87,14 +102,10 @@ def _verify_signature(request: Request, body: bytes) -> None:
     )
 
 
-async def verify_webhook_signature(request: Request) -> bytes:
-    """Read the raw body and check it against the configured shared secret.
-
-    The scheme is the same for every supported host, only the header name and
-    framing differ.
-    """
+async def _read_verified_body(request: Request, secret_token: str) -> bytes:
+    """Read the raw body and check it against this connection's shared secret."""
     body = await request.body()
-    _verify_signature(request, body)
+    _verify_signature(request, body, secret_token)
 
     return body
 
@@ -132,8 +143,7 @@ def _require_review_action(payload: dict[str, Any]) -> None:
         raise ReviewNotNeededError()
 
 
-def _is_reviewer_targeted(payload: dict[str, Any]) -> bool:
-    reviewer = get_settings().GIT_PROVIDER_CONFIG.get("GIT_PROVIDER_REVIEWER", None)
+def _is_reviewer_targeted(payload: dict[str, Any], reviewer: str | None) -> bool:
     if reviewer is None:
         return True
 
@@ -146,35 +156,72 @@ def _is_reviewer_targeted(payload: dict[str, Any]) -> bool:
     return False
 
 
-async def parse_github_webhook(request: Request) -> GithubPullRequestWebhook:
-    body = await verify_webhook_signature(request=request)
-    _require_event(request, "x-github-event")
+async def parse_webhook_event(request: Request, tenant: TenantContext) -> PullRequestEventDTO:
+    """Authenticate and parse a delivery into a domain event.
 
-    payload_dict = _load_json(body)
-    _require_review_action(payload_dict)
+    The host type comes from the connection configuration, so one function
+    handles every host. The body is only read after the per-connection signature
+    has been verified.
+    """
+    connection = tenant.config
+    body = await _read_verified_body(request, connection.secret_token)
+    payload = _load_json(body)
 
-    return GithubPullRequestWebhook.model_validate(payload_dict)
+    # Order matters. The delivery kind (header for GitHub/Gitea, `eventKey` for
+    # Bitbucket) is checked first so unrelated deliveries stay a quiet 200. The
+    # payload shape is validated next, *before* the action gate: a payload that
+    # does not match the configured host is a configuration mistake and deserves
+    # a loud 422, whereas an action ReVu ignores is a deliberate 200. Checking
+    # the action first would swallow the former as the latter.
+    match connection.host:
+        case GitProviderEnum.GITHUB:
+            _require_event(request, GITHUB_EVENT_HEADER)
+            event = _validate(GithubPullRequestWebhook, payload, connection.key, "GitHub")
+            _require_review_action(payload)
+
+            return github_to_domain(event)
+
+        case GitProviderEnum.GITEA:
+            _require_event(request, GITEA_EVENT_HEADER)
+            event = _validate(GiteaPullRequestWebhook, payload, connection.key, "Gitea")
+            _require_review_action(payload)
+
+            return gitea_to_domain(event)
+
+        case GitProviderEnum.BITBUCKET:
+            if payload.get("eventKey") not in BITBUCKET_PR_EVENTS:
+                raise ReviewNotNeededError()
+
+            raw = _validate(BitBucketRawPullRequestWebhook, payload, connection.key, "Bitbucket")
+
+            if not _is_reviewer_targeted(payload, connection.reviewer):
+                raise ReviewNotNeededError()
+
+            return bitbucket_to_domain(raw.to_bb())
+
+        case _:
+            # Unreachable: the configuration validator rejects other hosts.
+            raise UnknownGitProviderException(f"Unknown git provider {connection.host!r}")
 
 
-async def parse_gitea_webhook(request: Request) -> GiteaPullRequestWebhook:
-    body = await verify_webhook_signature(request=request)
-    _require_event(request, "x-gitea-event")
+def _validate[ModelT: BaseModel](
+    model: type[ModelT],
+    payload: dict[str, Any],
+    connection_key: str,
+    host_label: str,
+) -> ModelT:
+    """Validate the payload, explaining a host mismatch in the log.
 
-    payload_dict = _load_json(body)
-    _require_review_action(payload_dict)
-
-    return GiteaPullRequestWebhook.model_validate(payload_dict)
-
-
-async def parse_bitbucket_webhook(request: Request) -> BitBucketRawPullRequestWebhook:
-    body = await verify_webhook_signature(request=request)
-
-    payload_dict = _load_json(body)
-
-    if payload_dict.get("eventKey") not in BITBUCKET_PR_EVENTS:
-        raise ReviewNotNeededError()
-
-    if not _is_reviewer_targeted(payload_dict):
-        raise ReviewNotNeededError()
-
-    return BitBucketRawPullRequestWebhook.model_validate(payload_dict)
+    A connection whose ``GIT_PROVIDER`` does not match the webhook pointing at it
+    is a configuration mistake, and without this note it only shows up as a
+    generic 422.
+    """
+    try:
+        return model.model_validate(payload)
+    except Exception:
+        logger.warning(
+            "payload does not look like a %s pull request event; check GIT_PROVIDER of connection %r",
+            host_label,
+            connection_key,
+        )
+        raise

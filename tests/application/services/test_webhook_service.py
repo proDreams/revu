@@ -3,13 +3,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from revu.application.entities.enums.webhook_service_enums import ReviewModeEnum
 from revu.application.entities.exceptions.webhook_service_exceptions import (
     ReviewModeException,
 )
+from revu.application.entities.tenant import GitConnection, TenantContext
 from revu.application.services.webhook_service import WebhookService
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
+from tests.conftest import make_connection
 
 pytestmark = pytest.mark.unit
 
@@ -54,62 +58,91 @@ def git_port():
 
 
 @pytest.fixture
-def service(ai_port, git_port):
-    return WebhookService(ai_port=ai_port, git_port=git_port)
+def service():
+    return WebhookService()
 
 
-async def test_comment_mode_sends_plain_comment(service, ai_port, git_port, settings):
-    settings["REVIEW_MODE"] = "comment"
+def make_tenant(ai_port, git_port, **connection) -> TenantContext:
+    return TenantContext(
+        connection=GitConnection.build(config=make_connection(**connection), port=git_port),
+        ai_port=ai_port,
+    )
 
-    await service.process_webhook(webhook_data=make_event())
+
+async def test_comment_mode_sends_one_comment(service, ai_port, git_port):
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.COMMENT)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
     git_port.send_comment.assert_awaited_once_with(repo_owner="owner/repo", review="comment review", index=7)
     git_port.send_inline.assert_not_awaited()
-    # Comment mode passes the raw diff through untouched.
-    ai_port.get_comment_response.assert_awaited_once_with(diff=DIFF, pr_title="Add feature", pr_body="Implements it")
+
+    task = ai_port.get_comment_response.await_args.args[0]
+    assert task.diff == DIFF
+    assert task.git_host == GitProviderEnum.GITHUB
+    assert task.pr_title == "Add feature"
+    assert task.pr_body == "Implements it"
 
 
-async def test_inline_mode_sends_annotated_diff(service, ai_port, git_port, settings):
-    settings["REVIEW_MODE"] = "inline"
+async def test_inline_mode_sends_the_annotated_diff(service, ai_port, git_port):
+    tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
 
-    await service.process_webhook(webhook_data=make_event())
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
     git_port.send_inline.assert_awaited_once()
     git_port.send_comment.assert_not_awaited()
 
-    annotated_diff = ai_port.get_inline_response.await_args.kwargs["diff"]
-    assert "+ [2] new line" in annotated_diff
-    assert "- [2] old line" in annotated_diff
-    assert "  [1->1] context" in annotated_diff
+    task = ai_port.get_inline_response.await_args.args[0]
+    assert "+ [2] new line" in task.diff
+    assert "- [2] old line" in task.diff
+    assert "  [1->1] context" in task.diff
 
-    assert ai_port.get_inline_response.await_args.kwargs["git_provider"] == "gitea"
-
-
-async def test_the_diff_is_passed_through_as_returned_by_the_port(service, ai_port, git_port, settings):
-    """The port owns decoding; the service must not re-normalise the diff."""
-    settings["REVIEW_MODE"] = "comment"
-
-    await service.process_webhook(webhook_data=make_event())
-
-    ai_port.get_comment_response.assert_awaited_once_with(diff=DIFF, pr_title="Add feature", pr_body="Implements it")
+    assert git_port.send_inline.await_args.kwargs["sha"] == COMMIT_SHA
 
 
-async def test_process_webhook_rejects_unknown_review_mode(service, settings):
-    settings["REVIEW_MODE"] = "bogus"
+async def test_the_connection_review_mode_is_used(service, ai_port, git_port):
+    """The mode comes from the connection, not from a global setting."""
+    comment_tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.COMMENT)
+    inline_tenant = make_tenant(ai_port, git_port, review_mode=ReviewModeEnum.INLINE)
+
+    await service.process_webhook(tenant=comment_tenant, webhook_data=make_event())
+    await service.process_webhook(tenant=inline_tenant, webhook_data=make_event())
+
+    ai_port.get_comment_response.assert_awaited_once()
+    ai_port.get_inline_response.assert_awaited_once()
+
+
+async def test_the_connection_system_prompt_travels_with_the_task(service, ai_port, git_port):
+    tenant = make_tenant(ai_port, git_port, system_prompt="connection prompt")
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert ai_port.get_inline_response.await_args.args[0].system_prompt == "connection prompt"
+
+
+async def test_the_connection_host_selects_the_output_format(service, ai_port, git_port):
+    tenant = make_tenant(ai_port, git_port, host=GitProviderEnum.BITBUCKET)
+
+    await service.process_webhook(tenant=tenant, webhook_data=make_event())
+
+    assert ai_port.get_inline_response.await_args.args[0].git_host == GitProviderEnum.BITBUCKET
+
+
+async def test_an_unknown_review_mode_is_reported(service, ai_port, git_port):
+    """Unreachable through the configuration, but the guard must still hold."""
+    tenant = make_tenant(ai_port, git_port, review_mode="bogus")  # type: ignore[arg-type]
 
     with pytest.raises(ReviewModeException) as exc_info:
-        await service.process_webhook(webhook_data=make_event())
+        await service.process_webhook(tenant=tenant, webhook_data=make_event())
 
     assert "Unknown review mode" in str(exc_info.value)
 
 
-async def test_reviews_are_bounded_by_the_concurrency_limit(settings, ai_port, git_port):
-    """A burst of webhooks must not start an unlimited number of reviews."""
-    settings.set("MAX_CONCURRENT_REVIEWS", 1)
-    service = WebhookService(ai_port=ai_port, git_port=git_port)
-
+async def test_reviews_of_one_connection_are_bounded(service, ai_port):
+    """A burst of pushes must not start an unlimited number of reviews."""
     running = 0
     max_running = 0
+    git_port = AsyncMock()
 
     async def slow_fetch_diff(*args, **kwargs) -> str:
         nonlocal running, max_running
@@ -120,18 +153,42 @@ async def test_reviews_are_bounded_by_the_concurrency_limit(settings, ai_port, g
         return DIFF
 
     git_port.fetch_diff.side_effect = slow_fetch_diff
+    tenant = make_tenant(ai_port, git_port, max_concurrent_reviews=1)
 
-    await asyncio.gather(*(service.process_webhook(webhook_data=make_event()) for _ in range(5)))
+    await asyncio.gather(*(service.process_webhook(tenant=tenant, webhook_data=make_event()) for _ in range(5)))
 
     assert max_running == 1
     assert git_port.fetch_diff.await_count == 5
 
 
-async def test_the_concurrency_limit_is_read_from_the_settings(settings, ai_port, git_port):
-    settings.set("MAX_CONCURRENT_REVIEWS", 4)
-    service = WebhookService(ai_port=ai_port, git_port=git_port)
+async def test_connections_do_not_block_each_other(service, ai_port):
+    """The budget is per connection, so one noisy repo cannot starve the rest."""
+    running = 0
+    max_running = 0
 
-    assert service._review_slots._value == 4
+    def slow_port():
+        port = AsyncMock()
+
+        async def slow_fetch_diff(*args, **kwargs) -> str:
+            nonlocal running, max_running
+            running += 1
+            max_running = max(max_running, running)
+            await asyncio.sleep(0)
+            running -= 1
+            return DIFF
+
+        port.fetch_diff.side_effect = slow_fetch_diff
+        return port
+
+    first = make_tenant(ai_port, slow_port(), key="gh-one", max_concurrent_reviews=1)
+    second = make_tenant(ai_port, slow_port(), key="gh-two", max_concurrent_reviews=1)
+
+    await asyncio.gather(
+        service.process_webhook(tenant=first, webhook_data=make_event()),
+        service.process_webhook(tenant=second, webhook_data=make_event()),
+    )
+
+    assert max_running == 2
 
 
 def test_annotate_diff_marks_added_file():

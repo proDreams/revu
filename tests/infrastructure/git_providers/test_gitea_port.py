@@ -7,63 +7,64 @@ from revu.domain.entities.dto.ai_provider_dto import (
     GiteaReviewCommentDTO,
     ReviewResponseDTO,
 )
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.git_providers.gitea.gitea_port import GiteaPort
+from tests.conftest import GITEA_TOKEN, GITEA_URL, make_connection
 
 pytestmark = pytest.mark.unit
 
 
-def test_get_headers(settings):
-    port = GiteaPort(http_client=AsyncMock())
+def _port(http_client: AsyncMock, **connection) -> GiteaPort:
+    config = make_connection(
+        key="gitea-int",
+        host=GitProviderEnum.GITEA,
+        user_token=GITEA_TOKEN,
+        base_url=GITEA_URL,
+        **connection,
+    )
 
-    headers = port._get_headers()
+    return GiteaPort(http_client=http_client, config=config)
 
-    assert isinstance(headers, dict)
-    assert headers["Authorization"] == f"token {settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_USER_TOKEN}"
+
+def test_get_headers():
+    headers = _port(AsyncMock())._get_headers()
+
+    assert headers == {"Authorization": f"token {GITEA_TOKEN}"}
 
 
 async def test_fetch_diff_decodes_bytes_to_str():
     """The gateway returns raw bytes; the port owes the protocol a str diff."""
     http_client = AsyncMock()
     http_client.get.return_value = b"test diff"
-    port = GiteaPort(http_client=http_client)
 
-    result = await port.fetch_diff(repo="test", index=1)
+    result = await _port(http_client).fetch_diff(repo="test", index=1)
 
     assert result == "test diff"
     assert isinstance(result, str)
-    assert http_client.get.await_args.kwargs["url"] == "https://example.com/api/v1/repos/test/pulls/1.diff"
+    assert http_client.get.await_args.kwargs["url"] == f"{GITEA_URL}/api/v1/repos/test/pulls/1.diff"
     assert http_client.get.await_args.kwargs["expect_json"] is False
 
 
-async def test_send_comment(settings):
+async def test_send_comment():
     http_client = AsyncMock(post=AsyncMock())
-    port = GiteaPort(http_client=http_client)
 
-    repo_owner = "test"
-    review = "test review"
-    index = 1
+    await _port(http_client).send_comment(repo_owner="test", review="test review", index=1)
 
-    await port.send_comment(repo_owner=repo_owner, review=review, index=index)
-    http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload={"body": review})
+    http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload={"body": "test review"})
 
 
 async def test_send_inline():
     http_client = AsyncMock(post=AsyncMock())
-    port = GiteaPort(http_client=http_client)
-
-    sha = "test sha"
-    repo_owner = "test"
     review = ReviewResponseDTO(
         general_comment="test review",
         comments=[GiteaReviewCommentDTO(path="test", old_position=1, new_position=0, body="test body")],
     )
-    index = 1
+
+    await _port(http_client).send_inline(sha="test sha", repo_owner="test", review=review, index=1)
 
     payload = {
-        "commit_id": sha,
+        "commit_id": "test sha",
         "body": review.general_comment,
         "comments": [asdict(comment) for comment in review.comments],
     }
-
-    await port.send_inline(sha=sha, repo_owner=repo_owner, review=review, index=index)
     http_client.post.assert_awaited_once_with(url=ANY, headers=ANY, payload=payload)

@@ -2,16 +2,16 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from dynaconf import Dynaconf
+from revu.application.config import LogSettings
 
 
 class ProjectLogger:
-    def __init__(self, settings: Dynaconf):
-        self.log_path = Path(settings.LOG_DIR)
-        self.log_file = self.log_path / settings.LOG_FILE
-        self.log_level = settings.LOG_LEVEL
-        self.max_log_size = settings.MAX_SIZE_MB
-        self.backup_count = settings.BACKUP_COUNT
+    def __init__(self, settings: LogSettings):
+        self.log_path = Path(settings.directory)
+        self.log_file = self.log_path / settings.file
+        self.log_level = settings.level
+        self.max_log_size = settings.max_size_mb
+        self.backup_count = settings.backup_count
         self.pre_registered_loggers = ["uvicorn", "httpx"]
 
         self._setup_logging_directory()

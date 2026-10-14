@@ -6,21 +6,21 @@ import pytest
 from fastapi import HTTPException
 from starlette import status
 
-from revu.presentation.webhooks.schemas.github_schemas import (
-    BitBucketRawPullRequestWebhook,
-    GiteaPullRequestWebhook,
-    GithubPullRequestWebhook,
+from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
+from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
+from revu.domain.entities.exceptions.git_provider_exceptions import (
+    UnknownGitProviderException,
 )
 from revu.presentation.webhooks.validators import (
     ReviewNotNeededError,
-    parse_bitbucket_webhook,
-    parse_gitea_webhook,
-    parse_github_webhook,
-    verify_webhook_signature,
+    parse_webhook_event,
 )
+from tests.conftest import GITEA_SECRET, GITHUB_SECRET, make_connection
 from tests.fixtures.presentation_fixtures.fake_request import make_request
 from tests.fixtures.presentation_fixtures.payloads import (
     INVALID_ACTION_WEBHOOK_PAYLOAD,
+    SOURCE_COMMIT_SHA,
     VALID_BITBUCKET_PAYLOAD,
     VALID_WEBHOOK_PAYLOAD,
 )
@@ -28,315 +28,224 @@ from tests.fixtures.presentation_fixtures.payloads import (
 pytestmark = pytest.mark.unit
 
 
-def _digest(body: bytes, settings) -> str:
-    secret = settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN
+def _digest(body: bytes, secret: str) -> str:
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
-def _sign(body: bytes, settings) -> dict[str, str]:
-    """Build the HMAC-SHA256 header a git host would send for ``body``."""
-    return {"x-hub-signature-256": f"sha256={_digest(body, settings)}"}
+def _sign(body: bytes, secret: str) -> dict[str, str]:
+    """The header a git host would send for ``body`` and its shared secret."""
+    return {"x-hub-signature-256": f"sha256={_digest(body, secret)}"}
 
 
-async def test_valid_github_webhook_signature(settings):
+async def test_a_signed_github_delivery_becomes_a_domain_event(make_tenant):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    signed = await make_request(body=body, headers=_sign(body, settings))
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
 
-    assert (await verify_webhook_signature(request=signed)) == body
+    event = await parse_webhook_event(request=request, tenant=tenant)
+
+    assert isinstance(event, PullRequestEventDTO)
+    assert event.action == PullRequestActionEnum.OPENED
+    assert event.repo_full_name == "CodeOnANapkin/test"
+    assert event.pr_number == 12
 
 
-async def test_missing_github_webhook_signature():
+async def test_the_signature_of_another_connection_does_not_unlock_this_one(make_tenant):
+    """The critical isolation property: secrets must not be interchangeable."""
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers={})
+    tenant = make_tenant(make_connection(secret_token=GITHUB_SECRET))
+    request = await make_request(body=body, headers=_sign(body, GITEA_SECRET))
 
     with pytest.raises(HTTPException) as exc_info:
-        await verify_webhook_signature(request=request)
+        await parse_webhook_event(request=request, tenant=tenant)
 
     assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "signature header is missing" in exc_info.value.detail.lower()
-    assert "x-hub-signature-256" in exc_info.value.detail
+    assert "didn't match" in exc_info.value.detail
 
 
-async def test_invalid_github_webhook_signature():
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    sig = hmac.new(b"invalid_secret", body, hashlib.sha256).hexdigest()
-
-    request = await make_request(body=body, headers={"x-hub-signature-256": f"sha256={sig}"})
-
-    with pytest.raises(HTTPException) as exc_info:
-        await verify_webhook_signature(request=request)
-
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "Request signatures didn't match!" in exc_info.value.detail
-
-
-async def test_a_valid_signature_on_a_later_header_is_accepted(settings):
+async def test_a_valid_signature_on_a_later_header_is_accepted(make_tenant):
     """Hosts may send several signature headers; every one of them gets a chance."""
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
+    tenant = make_tenant(make_connection())
     request = await make_request(
         body=body,
         headers={
             "x-hub-signature-256": "sha256=" + "0" * 64,
-            "x-gitea-signature": _digest(body, settings),
+            "x-gitea-signature": _digest(body, GITHUB_SECRET),
         },
     )
 
-    assert (await verify_webhook_signature(request=request)) == body
+    assert isinstance(await parse_webhook_event(request=request, tenant=tenant), PullRequestEventDTO)
 
 
-async def test_valid_parse_github_webhook(settings):
+async def test_a_missing_signature_is_rejected(make_tenant):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    result = await parse_github_webhook(request=request)
-
-    assert isinstance(result, GithubPullRequestWebhook)
-
-
-async def test_valid_parse_gitea_webhook(settings):
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    result = await parse_gitea_webhook(request=request)
-
-    assert isinstance(result, GiteaPullRequestWebhook)
-
-
-async def test_invalid_parse_github_webhook(settings):
-    body = b"broken JSON"
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await parse_github_webhook(request=request)
-
-    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Invalid JSON payload" in exc_info.value.detail
-
-
-async def test_invalid_parse_gitea_webhook(settings):
-    body = b"broken JSON"
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await parse_gitea_webhook(request=request)
-
-    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Invalid JSON payload" in exc_info.value.detail
-
-
-async def test_valid_parse_bitbucket_webhook(settings, monkeypatch):
-    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-    result = await parse_bitbucket_webhook(request=request)
-
-    assert isinstance(result, BitBucketRawPullRequestWebhook)
-
-
-@pytest.mark.parametrize("event_key", ["pr:opened", "pr:from_ref_updated"])
-async def test_bitbucket_reviews_new_pull_requests_and_new_commits(settings, monkeypatch, event_key):
-    """`pr:from_ref_updated` is how Bitbucket announces commits pushed to a PR."""
-    payload = {**VALID_BITBUCKET_PAYLOAD, "eventKey": event_key}
-    body = json.dumps(payload).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    assert isinstance(await parse_bitbucket_webhook(request=request), BitBucketRawPullRequestWebhook)
-
-
-async def test_bitbucket_ignores_metadata_only_updates(settings, monkeypatch):
-    """`pr:modified` means the title/description changed, not the code."""
-    payload = {**VALID_BITBUCKET_PAYLOAD, "eventKey": "pr:modified"}
-    body = json.dumps(payload).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(ReviewNotNeededError):
-        await parse_bitbucket_webhook(request=request)
-
-
-async def test_bitbucket_webhook_without_signature_is_rejected(settings, monkeypatch):
-    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
+    tenant = make_tenant(make_connection())
     request = await make_request(body=body, headers={})
 
     with pytest.raises(HTTPException) as exc_info:
-        await parse_bitbucket_webhook(request=request)
+        await parse_webhook_event(request=request, tenant=tenant)
+
+    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
+    assert "signature header is missing" in exc_info.value.detail.lower()
+
+
+async def test_the_body_is_not_parsed_before_the_signature_is_checked(make_tenant):
+    """A request with a broken body and a bad signature fails on the signature."""
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=b"not json", headers={"x-hub-signature-256": "sha256=bad"})
+
+    with pytest.raises(HTTPException) as exc_info:
+        await parse_webhook_event(request=request, tenant=tenant)
 
     assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
 
-async def test_bitbucket_webhook_with_bad_signature_is_rejected(settings, monkeypatch):
-    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers={"x-hub-signature-256": "sha256=deadbeef"})
-
-    with pytest.raises(HTTPException) as exc_info:
-        await parse_bitbucket_webhook(request=request)
-
-    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-
-
-async def test_invalid_json_parse_bitbucket_webhook(settings):
-    body = b"broken JSON"
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await parse_bitbucket_webhook(request=request)
-
-    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Invalid JSON payload" in exc_info.value.detail
-
-
-async def test_parse_bitbucket_webhook_reviewer_not_needed(settings, monkeypatch):
-    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "someone_else")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(ReviewNotNeededError) as exc_info:
-        await parse_bitbucket_webhook(request=request)
-
-    assert "Review not needed" in str(exc_info.value)
-
-
-async def test_parse_bitbucket_webhook_event_not_needed(settings, monkeypatch):
-    payload = {**VALID_BITBUCKET_PAYLOAD, "eventKey": "pr:merged"}
-    body = json.dumps(payload).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(ReviewNotNeededError) as exc_info:
-        await parse_bitbucket_webhook(request=request)
-
-    assert "Review not needed" in str(exc_info.value)
-
-
-async def test_parse_bitbucket_webhook_without_reviewers(settings, monkeypatch):
-    pull_request = {k: v for k, v in VALID_BITBUCKET_PAYLOAD["pullRequest"].items() if k != "reviewers"}
-    payload = {**VALID_BITBUCKET_PAYLOAD, "pullRequest": pull_request}
-    body = json.dumps(payload).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    # Used to raise KeyError because "reviewers" was read unconditionally.
-    with pytest.raises(ReviewNotNeededError):
-        await parse_bitbucket_webhook(request=request)
-
-
-async def test_parse_bitbucket_webhook_without_event_key(settings, monkeypatch):
-    payload = {k: v for k, v in VALID_BITBUCKET_PAYLOAD.items() if k != "eventKey"}
-    body = json.dumps(payload).encode()
-
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", "bot")
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(ReviewNotNeededError):
-        await parse_bitbucket_webhook(request=request)
-
-
-async def test_parse_github_webhook_ignores_unhandled_action(settings):
-    body = json.dumps(INVALID_ACTION_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    with pytest.raises(ReviewNotNeededError) as exc_info:
-        await parse_github_webhook(request=request)
-
-    assert "Review not needed" in str(exc_info.value)
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {**VALID_WEBHOOK_PAYLOAD, "action": "synchronize"},
-        {**VALID_WEBHOOK_PAYLOAD, "action": "synchronized"},
-        {**VALID_WEBHOOK_PAYLOAD, "action": "reopened"},
-    ],
-)
-async def test_parse_github_webhook_accepts_review_trigger_actions(settings, payload):
-    body = json.dumps(payload).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    assert isinstance(await parse_github_webhook(request=request), GithubPullRequestWebhook)
-
-
-async def test_parse_github_webhook_ignores_non_pull_request_event(settings):
+async def test_a_legacy_sha1_only_header_is_rejected(make_tenant):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers={**_sign(body, settings), "x-github-event": "push"})
-
-    with pytest.raises(ReviewNotNeededError) as exc_info:
-        await parse_github_webhook(request=request)
-
-    assert "Review not needed" in str(exc_info.value)
-
-
-async def test_parse_github_webhook_without_event_header_is_processed(settings):
-    # Senders that don't send X-GitHub-Event keep the legacy behaviour.
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
-
-    assert isinstance(await parse_github_webhook(request=request), GithubPullRequestWebhook)
-
-
-async def test_parse_github_webhook_accepts_gitea_signature_header(settings):
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    # Gitea's native header carries the bare hex digest without a `sha256=` prefix.
-    request = await make_request(body=body, headers={"x-gitea-signature": _digest(body, settings)})
-
-    assert isinstance(await parse_github_webhook(request=request), GithubPullRequestWebhook)
-
-
-async def test_signature_rejects_legacy_sha1_header(settings):
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
+    tenant = make_tenant(make_connection())
     request = await make_request(body=body, headers={"x-hub-signature": "sha1=abc123"})
 
     with pytest.raises(HTTPException) as exc_info:
-        await verify_webhook_signature(request=request)
+        await parse_webhook_event(request=request, tenant=tenant)
 
     assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
 
 
-async def test_parse_github_webhook_rejects_non_object_json(settings):
-    body = json.dumps([1, 2, 3]).encode()
-
-    request = await make_request(body=body, headers=_sign(body, settings))
+async def test_broken_json_is_a_client_error(make_tenant):
+    body = b"broken JSON"
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
 
     with pytest.raises(HTTPException) as exc_info:
-        await parse_github_webhook(request=request)
+        await parse_webhook_event(request=request, tenant=tenant)
 
     assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
     assert "Invalid JSON payload" in exc_info.value.detail
 
 
-async def test_parse_bitbucket_webhook_without_reviewer_configured(settings, monkeypatch):
+async def test_non_object_json_is_a_client_error(make_tenant):
+    body = json.dumps([1, 2, 3]).encode()
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await parse_webhook_event(request=request, tenant=tenant)
+
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_a_non_pull_request_event_is_ignored(make_tenant):
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers={**_sign(body, GITHUB_SECRET), "x-github-event": "push"})
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_an_action_revu_ignores_is_acknowledged(make_tenant):
+    body = json.dumps(INVALID_ACTION_WEBHOOK_PAYLOAD).encode()
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+@pytest.mark.parametrize("action", ["synchronize", "synchronized", "reopened"])
+async def test_every_review_trigger_action_is_accepted(make_tenant, action):
+    body = json.dumps({**VALID_WEBHOOK_PAYLOAD, "action": action}).encode()
+    tenant = make_tenant(make_connection())
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    assert isinstance(await parse_webhook_event(request=request, tenant=tenant), PullRequestEventDTO)
+
+
+async def test_a_signed_gitea_delivery_uses_the_gitea_event_header(make_tenant):
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(key="gitea-int", host=GitProviderEnum.GITEA, secret_token=GITEA_SECRET))
+    request = await make_request(body=body, headers={**_sign(body, GITEA_SECRET), "x-gitea-event": "push"})
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_a_payload_that_does_not_match_the_configured_host_is_reported(make_tenant, caplog):
+    """The classic misconfiguration: a Gitea payload on a github connection."""
     body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-    monkeypatch.setitem(settings.GIT_PROVIDER_CONFIG, "GIT_PROVIDER_REVIEWER", None)
+    tenant = make_tenant(make_connection(host=GitProviderEnum.GITHUB))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
 
-    request = await make_request(body=body, headers=_sign(body, settings))
+    with caplog.at_level("WARNING"), pytest.raises(Exception):
+        await parse_webhook_event(request=request, tenant=tenant)
 
-    assert isinstance(await parse_bitbucket_webhook(request=request), BitBucketRawPullRequestWebhook)
+    assert "check GIT_PROVIDER of connection 'gh-main'" in caplog.text
+
+
+@pytest.mark.parametrize("event_key", ["pr:opened", "pr:from_ref_updated"])
+async def test_bitbucket_reviews_new_pull_requests_and_new_commits(make_tenant, event_key):
+    body = json.dumps({**VALID_BITBUCKET_PAYLOAD, "eventKey": event_key}).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    event = await parse_webhook_event(request=request, tenant=tenant)
+
+    assert event.pr_number == 42
+    assert event.repo_full_name == "MYPROJ/repos/my-repo"
+    # The reviewed commit is the source branch tip, not the target branch one.
+    assert event.commit_sha == SOURCE_COMMIT_SHA
+
+
+async def test_bitbucket_ignores_metadata_only_updates(make_tenant):
+    body = json.dumps({**VALID_BITBUCKET_PAYLOAD, "eventKey": "pr:modified"}).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_bitbucket_without_reviewers_is_ignored_when_a_reviewer_is_required(make_tenant):
+    pull_request = {k: v for k, v in VALID_BITBUCKET_PAYLOAD["pullRequest"].items() if k != "reviewers"}
+    body = json.dumps({**VALID_BITBUCKET_PAYLOAD, "pullRequest": pull_request}).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET, reviewer="bot"))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_bitbucket_reviews_when_no_reviewer_is_configured(make_tenant):
+    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET, reviewer=None))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    assert isinstance(await parse_webhook_event(request=request, tenant=tenant), PullRequestEventDTO)
+
+
+async def test_bitbucket_reviews_when_the_configured_reviewer_is_listed(make_tenant):
+    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET, reviewer="bot@example.com"))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    assert isinstance(await parse_webhook_event(request=request, tenant=tenant), PullRequestEventDTO)
+
+
+async def test_bitbucket_ignores_a_delivery_for_another_reviewer(make_tenant):
+    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(key="bb", host=GitProviderEnum.BITBUCKET, reviewer="someone_else"))
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_an_unsupported_host_is_reported(make_tenant):
+    """Unreachable through the configuration, but the guard must still hold."""
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(host="gitlab"))  # type: ignore[arg-type]
+    request = await make_request(body=body, headers=_sign(body, GITHUB_SECRET))
+
+    with pytest.raises(UnknownGitProviderException):
+        await parse_webhook_event(request=request, tenant=tenant)

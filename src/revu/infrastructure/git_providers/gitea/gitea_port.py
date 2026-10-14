@@ -1,18 +1,18 @@
 from dataclasses import asdict
 from urllib.parse import urljoin
 
-from revu.application.config import get_settings
+from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
 
 
 class GiteaPort(GitProviderProtocol):
-    def __init__(self, http_client: HttpClientGateway) -> None:
+    def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
         self.http_client = http_client
-        self.git_conf = get_settings().GIT_PROVIDER_CONFIG
-        self.gitea_token = self.git_conf.GIT_PROVIDER_USER_TOKEN
-        self.gitea_url = self.git_conf.GIT_PROVIDER_URL
+        self.config = config
+        self.gitea_token = config.user_token
+        self.gitea_url = config.resolved_base_url
 
     def _get_headers(self) -> dict[str, str]:
         return {"Authorization": f"token {self.gitea_token}"}

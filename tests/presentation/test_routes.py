@@ -12,6 +12,7 @@ from revu.application.services.webhook_service import WebhookService
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.exceptions.base import CoreException
 from revu.presentation.webhooks.routes import review_pull_request
+from tests.conftest import BITBUCKET_SECRET, GITEA_SECRET, GITHUB_SECRET
 from tests.fixtures.presentation_fixtures.payloads import (
     INVALID_ACTION_WEBHOOK_PAYLOAD,
     SOURCE_COMMIT_SHA,
@@ -22,8 +23,7 @@ from tests.fixtures.presentation_fixtures.payloads import (
 pytestmark = pytest.mark.unit
 
 
-def _sign(body: bytes, settings) -> dict[str, str]:
-    secret = settings.GIT_PROVIDER_CONFIG.GIT_PROVIDER_SECRET_TOKEN
+def _sign(body: bytes, secret: str) -> dict[str, str]:
     digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
     return {"x-hub-signature-256": f"sha256={digest}"}
@@ -32,10 +32,10 @@ def _sign(body: bytes, settings) -> dict[str, str]:
 @pytest.fixture
 def reviews(monkeypatch):
     """Record every review the background task would have started."""
-    processed: list[PullRequestEventDTO] = []
+    processed: list[tuple[str, PullRequestEventDTO]] = []
 
-    async def fake_process(self, webhook_data: PullRequestEventDTO) -> None:
-        processed.append(webhook_data)
+    async def fake_process(self, tenant, webhook_data) -> None:
+        processed.append((tenant.key, webhook_data))
 
     monkeypatch.setattr(WebhookService, "process_webhook", fake_process)
 
@@ -43,89 +43,98 @@ def reviews(monkeypatch):
 
 
 @pytest.fixture
-def client():
+def client(app_settings):
     with TestClient(create_app()) as test_client:
         yield test_client
 
 
-async def test_github_webhook_starts_review(client, reviews, settings):
+def test_a_signed_github_delivery_starts_a_review(client, reviews):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
 
-    response = client.post("/webhooks/github", content=body, headers=_sign(body, settings))
+    response = client.post("/webhooks/gh-main", content=body, headers=_sign(body, GITHUB_SECRET))
 
     assert response.status_code == 200
-    assert [review.repo_full_name for review in reviews] == ["CodeOnANapkin/test"]
-    assert reviews[0].pr_number == 12
+    assert [key for key, _ in reviews] == ["gh-main"]
+    assert reviews[0][1].repo_full_name == "CodeOnANapkin/test"
+    assert reviews[0][1].pr_number == 12
 
 
-async def test_github_webhook_ignores_unhandled_action(client, reviews, settings):
+def test_a_signed_gitea_delivery_starts_a_review_on_its_own_connection(client, reviews):
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+
+    response = client.post("/webhooks/gitea-int", content=body, headers=_sign(body, GITEA_SECRET))
+
+    assert response.status_code == 200
+    assert [key for key, _ in reviews] == ["gitea-int"]
+
+
+def test_a_signature_is_only_valid_for_its_own_connection(client, reviews):
+    """The route-level half of the secret-isolation guarantee."""
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+
+    response = client.post("/webhooks/gitea-int", content=body, headers=_sign(body, GITHUB_SECRET))
+
+    assert response.status_code == 403
+    assert reviews == []
+
+
+def test_an_unknown_connection_is_a_404(client, reviews):
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+
+    response = client.post("/webhooks/does-not-exist", content=body, headers=_sign(body, GITHUB_SECRET))
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Unknown webhook connection"}
+    assert reviews == []
+
+
+def test_an_unrelated_event_is_acknowledged(client, reviews):
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+    headers = {**_sign(body, GITHUB_SECRET), "x-github-event": "push"}
+
+    response = client.post("/webhooks/gh-main", content=body, headers=headers)
+
+    assert response.status_code == 200
+    assert reviews == []
+
+
+def test_an_action_revu_ignores_is_acknowledged(client, reviews):
     body = json.dumps(INVALID_ACTION_WEBHOOK_PAYLOAD).encode()
 
-    response = client.post("/webhooks/github", content=body, headers=_sign(body, settings))
+    response = client.post("/webhooks/gh-main", content=body, headers=_sign(body, GITHUB_SECRET))
 
     assert response.status_code == 200
     assert response.json() == {"detail": "Review not needed"}
     assert reviews == []
 
 
-async def test_github_webhook_ignores_other_events(client, reviews, settings):
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-    headers = {**_sign(body, settings), "x-github-event": "push"}
-
-    response = client.post("/webhooks/github", content=body, headers=headers)
-
-    assert response.status_code == 200
-    assert reviews == []
-
-
-async def test_github_webhook_rejects_bad_signature(client, reviews, settings):
+def test_a_bad_signature_is_rejected(client, reviews):
     body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
 
-    response = client.post("/webhooks/github", content=body, headers={"x-hub-signature-256": "sha256=bad"})
+    response = client.post("/webhooks/gh-main", content=body, headers={"x-hub-signature-256": "sha256=bad"})
 
     assert response.status_code == 403
     assert reviews == []
 
 
-async def test_github_webhook_returns_422_for_malformed_payload(client, reviews, settings):
+def test_a_malformed_payload_is_a_422(client, reviews):
     body = json.dumps({"action": "opened"}).encode()
 
-    response = client.post("/webhooks/github", content=body, headers=_sign(body, settings))
+    response = client.post("/webhooks/gh-main", content=body, headers=_sign(body, GITHUB_SECRET))
 
     assert response.status_code == 422
     assert response.json()["detail"][0]["type"] == "missing"
     assert reviews == []
 
 
-async def test_gitea_webhook_starts_review(client, reviews, settings):
-    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
-
-    response = client.post("/webhooks/gitea", content=body, headers=_sign(body, settings))
-
-    assert response.status_code == 200
-    assert len(reviews) == 1
-
-
-async def test_bitbucket_webhook_starts_review(client, reviews, settings):
-    body = json.dumps(VALID_BITBUCKET_PAYLOAD).encode()
-
-    response = client.post("/webhooks/bitbucket", content=body, headers=_sign(body, settings))
-
-    assert response.status_code == 200
-    assert len(reviews) == 1
-    assert reviews[0].pr_number == 42
-    assert reviews[0].repo_full_name == "MYPROJ/repos/my-repo"
-    # The reviewed commit is the source branch tip, not the target branch one.
-    assert reviews[0].commit_sha == SOURCE_COMMIT_SHA
-
-
-async def test_bitbucket_webhook_starts_review_for_new_commits(client, reviews, settings):
+def test_a_bitbucket_connection_reviews_new_commits(client, reviews):
     body = json.dumps({**VALID_BITBUCKET_PAYLOAD, "eventKey": "pr:from_ref_updated"}).encode()
 
-    response = client.post("/webhooks/bitbucket", content=body, headers=_sign(body, settings))
+    response = client.post("/webhooks/bb-client", content=body, headers=_sign(body, BITBUCKET_SECRET))
 
     assert response.status_code == 200
-    assert len(reviews) == 1
+    assert [key for key, _ in reviews] == ["bb-client"]
+    assert reviews[0][1].commit_sha == SOURCE_COMMIT_SHA
 
 
 def test_health_endpoint(client):
@@ -135,7 +144,7 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
-async def test_review_task_swallows_errors_instead_of_killing_the_worker(caplog):
+async def test_review_task_swallows_errors_instead_of_killing_the_worker(caplog, tenant):
     service = AsyncMock()
     service.process_webhook.side_effect = RuntimeError("boom")
 
@@ -148,10 +157,11 @@ async def test_review_task_swallows_errors_instead_of_killing_the_worker(caplog)
     )
 
     with caplog.at_level("ERROR"):
-        await review_pull_request(service, event)  # type: ignore[arg-type]
+        await review_pull_request(service, tenant, event)  # type: ignore[arg-type]
 
     service.process_webhook.assert_awaited_once()
-    assert "Review failed for owner/repo#3" in caplog.text
+    assert "Review failed for connection gh-main" in caplog.text
+    assert "owner/repo#3" in caplog.text
 
 
 class _Boom(CoreException):

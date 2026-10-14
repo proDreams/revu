@@ -1,7 +1,7 @@
 from dataclasses import asdict
 from urllib.parse import urljoin
 
-from revu.application.config import get_settings
+from revu.application.entities.config import GitConnectionConfig
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.protocols.git_provider_protocol import GitProviderProtocol
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
@@ -10,14 +10,14 @@ from revu.infrastructure.http_client.http_client_gateway import HttpClientGatewa
 class GithubPort(GitProviderProtocol):
     DEFAULT_API_URL = "https://api.github.com"
 
-    def __init__(self, http_client: HttpClientGateway) -> None:
+    def __init__(self, http_client: HttpClientGateway, config: GitConnectionConfig) -> None:
         self.http_client = http_client
-        self.git_conf = get_settings().GIT_PROVIDER_CONFIG
-        self.github_token = self.git_conf.GIT_PROVIDER_USER_TOKEN
+        self.config = config
+        self.github_token = config.user_token
         # GitHub Enterprise Server serves its REST API under `/api/v3`, so a
         # self-hosted instance has to be configured as
         # `https://ghe.example.com/api/v3`. When unset, github.com is used.
-        self.github_url = self.git_conf.get("GIT_PROVIDER_URL") or self.DEFAULT_API_URL
+        self.github_url = config.base_url or self.DEFAULT_API_URL
 
     def _get_headers(self) -> dict[str, str]:
         return {"Authorization": f"token {self.github_token}"}

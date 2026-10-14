@@ -6,6 +6,7 @@ from revu.domain.entities.dto.ai_provider_dto import (
     GithubReviewCommentDTO,
     ReviewResponseDTO,
 )
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.domain.entities.exceptions.git_provider_exceptions import (
     UnknownGitProviderException,
 )
@@ -19,9 +20,12 @@ def test_create_github_response_ai_provider_dto():
         {"path": "test path", "line": 10, "side": "RIGHT", "body": "test body"},
         {"path": "test path 2", "line": 22, "side": "LEFT", "body": "test body 2"},
     ]
-    git_provider = "github"
 
-    dto = ReviewResponseDTO.from_request(general_comment=general_comment, comments=comments, git_provider=git_provider)
+    dto = ReviewResponseDTO.from_request(
+        general_comment=general_comment,
+        comments=comments,
+        git_host=GitProviderEnum.GITHUB,
+    )
 
     assert isinstance(dto, ReviewResponseDTO)
     assert isinstance(dto.comments[0], GithubReviewCommentDTO)
@@ -35,7 +39,7 @@ def test_github_response_defaults_to_the_new_side():
     dto = ReviewResponseDTO.from_request(
         general_comment="c",
         comments=[{"path": "p", "line": 1, "body": "b"}],
-        git_provider="github",
+        git_host=GitProviderEnum.GITHUB,
     )
 
     assert dto.comments[0].side == "RIGHT"
@@ -47,9 +51,12 @@ def test_create_gitea_response_ai_provider_dto():
         {"path": "test path", "old_position": 0, "new_position": 1, "body": "test body"},
         {"path": "test path 2", "old_position": 2, "new_position": 2, "body": "test body 2"},
     ]
-    git_provider = "gitea"
 
-    dto = ReviewResponseDTO.from_request(general_comment=general_comment, comments=comments, git_provider=git_provider)
+    dto = ReviewResponseDTO.from_request(
+        general_comment=general_comment,
+        comments=comments,
+        git_host=GitProviderEnum.GITEA,
+    )
 
     assert isinstance(dto, ReviewResponseDTO)
     assert isinstance(dto.comments[0], GiteaReviewCommentDTO)
@@ -64,9 +71,12 @@ def test_create_bitbucket_response_ai_provider_dto():
         {"path": "test path", "lineType": "ADDED", "line": 1, "body": "test body"},
         {"path": "test path 2", "lineType": "REMOVED", "line": 2, "body": "test body 2"},
     ]
-    git_provider = "bitbucket"
 
-    dto = ReviewResponseDTO.from_request(general_comment=general_comment, comments=comments, git_provider=git_provider)
+    dto = ReviewResponseDTO.from_request(
+        general_comment=general_comment,
+        comments=comments,
+        git_host=GitProviderEnum.BITBUCKET,
+    )
 
     assert isinstance(dto, ReviewResponseDTO)
     assert isinstance(dto.comments[0], BitBucketReviewCommentDTO)
@@ -77,11 +87,11 @@ def test_create_bitbucket_response_ai_provider_dto():
 
 
 def test_create_unknown_response_ai_provider_dto():
-    general_comment = ""
-    comments = []
-    git_provider = "unknown"
-
     with pytest.raises(UnknownGitProviderException) as exc_info:
-        ReviewResponseDTO.from_request(general_comment=general_comment, comments=comments, git_provider=git_provider)
+        ReviewResponseDTO.from_request(
+            general_comment="",
+            comments=[],
+            git_host="unknown",  # type: ignore[arg-type]
+        )
 
     assert "Unknown Git Provider" in str(exc_info.value)

@@ -5,7 +5,6 @@ import pytest
 from revu.application.entities.exceptions.ai_adapters_exceptions import (
     InvalidAIOutput,
     NoAIResponse,
-    UnknownGitProvider,
 )
 from revu.application.entities.schemas.ai_providers_schemas.openai_schemas import (
     BitbucketReviewComment,
@@ -19,44 +18,37 @@ from revu.domain.entities.dto.ai_provider_dto import (
     BitBucketReviewCommentDTO,
     ReviewResponseDTO,
 )
+from revu.domain.entities.enums.git_provider_enums import GitProviderEnum
 from revu.infrastructure.ai_providers.openai.openai_port import OpenAIPort
+from tests.conftest import make_task
+
+pytestmark = pytest.mark.unit
 
 
 async def test_comment_response_reads_output_text():
     """Comment mode requests no schema, so parsed output stays None."""
     adapter = AsyncMock()
-    adapter.get_chat_response.return_value = AsyncMock(
-        output_parsed=None,
-        output_text="test output",
-    )
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="test output")
     port = OpenAIPort(adapter=adapter)
 
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-
-    result = await port.get_comment_response(diff=diff, pr_title=pr_title, pr_body=pr_body)
-
-    assert result == "test output"
+    assert await port.get_comment_response(make_task()) == "test output"
 
 
 async def test_comment_response_rejects_an_empty_answer():
     adapter = AsyncMock()
     adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="")
-    port = OpenAIPort(adapter=adapter)
 
     with pytest.raises(NoAIResponse):
-        await port.get_comment_response(diff="d", pr_title="t")
+        await OpenAIPort(adapter=adapter).get_comment_response(make_task())
 
 
 async def test_inline_response_rejects_a_missing_parsed_payload():
     """A refusal used to surface as AttributeError inside a background task."""
     adapter = AsyncMock()
     adapter.get_chat_response.return_value = AsyncMock(output_parsed=None)
-    port = OpenAIPort(adapter=adapter)
 
     with pytest.raises(InvalidAIOutput):
-        await port.get_inline_response(diff="d", git_provider="github", pr_title="t")
+        await OpenAIPort(adapter=adapter).get_inline_response(make_task())
 
 
 async def test_github_inline_response():
@@ -72,58 +64,13 @@ async def test_github_inline_response():
     adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
     port = OpenAIPort(adapter=adapter)
 
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "github"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+    result = await port.get_inline_response(make_task())
 
     assert isinstance(result, ReviewResponseDTO)
-    assert result.general_comment == output_parsed.general_comment
-    assert result.comments[1].body == output_parsed.comments[1].body
+    assert result.general_comment == "test comment"
+    assert result.comments[1].body == "test body 2"
     assert result.comments[1].side == "LEFT"
     assert result.comments[0].line == 1
-
-
-async def test_github_with_system_prompt_inline_response():
-    output_parsed = GithubReviewResponse(
-        general_comment="test comment",
-        comments=[GitHubReviewComment(path="test path", line=1, body="test body")],
-    )
-
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
-    port = OpenAIPort(adapter=adapter)
-    port.system_prompt = "test system-prompt"
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "github"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
-
-    assert isinstance(result, ReviewResponseDTO)
-
-    # SYSTEM_PROMPT must extend the built-in prompt instead of replacing it,
-    # otherwise the JSON contract providers rely on disappears.
-    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
-    assert instructions.startswith("test system-prompt\n\n")
-    assert "general_comment" in instructions
-
-
-async def test_github_with_system_prompt_comment_response():
-    adapter = AsyncMock()
-    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="output")
-    port = OpenAIPort(adapter=adapter)
-    port.system_prompt = "test system-prompt"
-
-    await port.get_comment_response(diff="d", pr_title="t")
-
-    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
-    assert instructions.startswith("test system-prompt\n\n")
-    assert instructions != "test system-prompt"
 
 
 async def test_gitea_inline_response():
@@ -139,31 +86,11 @@ async def test_gitea_inline_response():
     adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
     port = OpenAIPort(adapter=adapter)
 
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "gitea"
-
-    result = await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
+    result = await port.get_inline_response(make_task(git_host=GitProviderEnum.GITEA))
 
     assert isinstance(result, ReviewResponseDTO)
-    assert result.general_comment == output_parsed.general_comment
-    assert result.comments[0].body == output_parsed.comments[0].body
-
-
-async def test_unknown_inline_response():
-    adapter = AsyncMock()
-    port = OpenAIPort(adapter=adapter)
-
-    diff = "test diff"
-    pr_title = "test pr title"
-    pr_body = "test pr body"
-    git_provider = "unknown"
-
-    with pytest.raises(UnknownGitProvider) as exc_info:
-        await port.get_inline_response(diff=diff, pr_title=pr_title, pr_body=pr_body, git_provider=git_provider)
-
-    assert "unknown git provider" in str(exc_info.value)
+    assert result.general_comment == "test comment"
+    assert result.comments[0].body == "test body"
 
 
 async def test_bitbucket_inline_response():
@@ -176,7 +103,7 @@ async def test_bitbucket_inline_response():
     adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
     port = OpenAIPort(adapter=adapter)
 
-    result = await port.get_inline_response(diff="d", git_provider="bitbucket", pr_title="t", pr_body="b")
+    result = await port.get_inline_response(make_task(git_host=GitProviderEnum.BITBUCKET))
 
     assert isinstance(result, ReviewResponseDTO)
     assert result.general_comment == "test comment"
@@ -185,3 +112,44 @@ async def test_bitbucket_inline_response():
     assert isinstance(comment, BitBucketReviewCommentDTO)
     assert comment.lineType == "ADDED"
     assert comment.line == 42
+
+
+async def test_the_task_system_prompt_is_prepended_to_the_inline_prompt():
+    """SYSTEM_PROMPT must extend the built-in prompt instead of replacing it."""
+    output_parsed = GithubReviewResponse(
+        general_comment="test comment",
+        comments=[GitHubReviewComment(path="test path", line=1, body="test body")],
+    )
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=output_parsed)
+    port = OpenAIPort(adapter=adapter)
+
+    await port.get_inline_response(make_task(system_prompt="test system-prompt"))
+
+    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
+    assert instructions.startswith("test system-prompt\n\n")
+    assert "general_comment" in instructions
+
+
+async def test_the_task_system_prompt_is_prepended_to_the_comment_prompt():
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="output")
+    port = OpenAIPort(adapter=adapter)
+
+    await port.get_comment_response(make_task(system_prompt="test system-prompt"))
+
+    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
+    assert instructions.startswith("test system-prompt\n\n")
+    assert instructions != "test system-prompt"
+
+
+async def test_without_a_system_prompt_the_builtin_prompt_is_used():
+    adapter = AsyncMock()
+    adapter.get_chat_response.return_value = AsyncMock(output_parsed=None, output_text="output")
+    port = OpenAIPort(adapter=adapter)
+
+    await port.get_comment_response(make_task(system_prompt=None))
+
+    instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
+    assert instructions.lstrip().startswith("Ты — опытный инженер-программист")
+    assert "Ты — опытный инженер-программист" in instructions
