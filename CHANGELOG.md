@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The event header check ignores case, because GitLab spells its event
   `Merge Request Hook`.
 
+### Documentation
+
+- The README covers GitLab, the per-connection review settings, the failure
+  notice and the logging options, and gained a development section with the
+  commands for tests and the type check that sees the project dependencies.
+- `make test` runs the suite with its coverage gate.
+
 ## [2.0.0] - 2026-10-14
 
 ### Breaking changes

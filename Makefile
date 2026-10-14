@@ -5,6 +5,10 @@ install:
 lint:
 	uv run pre-commit run --all
 
+# Tests and the coverage gate; the options live in [tool.pytest.ini_options].
+test:
+	uv run pytest
+
 # The pre-commit hook cannot see the project dependencies, so it misses type
 # errors at the fastapi/pydantic/openai boundary; this one does not.
 typecheck:
