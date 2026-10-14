@@ -83,7 +83,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--format",
         choices=[item.value for item in OutputFormat],
         default=OutputFormat.TEXT.value,
-        help="формат вывода: text (по умолчанию) или json",
+        help=(
+            "что добавить к выводу: text (по умолчанию, только лог), json (машиночитаемый вывод "
+            "вместо текста), gitlab-codequality (отчёт в artifacts:reports:codequality), "
+            "github-annotations (аннотации в «Files changed»)"
+        ),
+    )
+    review.add_argument(
+        "--output",
+        type=Path,
+        help="куда писать отчёт (по умолчанию revu-codequality.json рядом с job'ом)",
     )
     destination = review.add_mutually_exclusive_group()
     destination.add_argument("--comment", action="store_true", help="опубликовать ревью комментарием в PR/MR")
@@ -113,6 +122,7 @@ def options_from_args(args: argparse.Namespace) -> ReviewOptions:
         fail_on=FailOn(args.fail_on),
         output_format=OutputFormat(args.format),
         comment=comment,
+        output=args.output,
         depth=args.depth,
         base=args.base,
         head=args.head,

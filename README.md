@@ -486,8 +486,46 @@ sudo docker compose pull && sudo docker compose up -d
 
 ### GitHub Actions
 
-В контейнере job'а нельзя использовать `actions/checkout` — это JS-экшен, которому нужен Node, а в образе
-ReVu его нет. Поэтому чекаут делает обычный `actions/checkout`, а образ запускается шагом `docker run`:
+Самый короткий путь — готовый экшен: он делает чекаут сам (с `fetch-depth: 0`, без которого сравнивать
+не с чем) и запускает образ.
+
+```yaml
+name: ReVu
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:            # экономия: документация ревью не требует
+      - "**/*.md"
+      - "docs/**"
+
+concurrency:                 # новый push отменяет предыдущее ревью
+  group: revu-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # без этого GITHUB_TOKEN не сможет комментировать
+    steps:
+      - uses: proDreams/revu@v2
+        with:
+          ai-api-key: ${{ secrets.REVU_AI_KEY }}
+          ai-model: gpt-4o-mini
+          # format: github-annotations   # пометки ещё и прямо в «Files changed»
+          # context-depth: deep          # читать окружение изменённых функций
+          # fail-on: error               # падать, если ревью не состоялось
+```
+
+Входы экшена называются так же, как переменные из таблицы ниже (`ai-model` — это `AI_PROVIDER_MODEL`),
+плюс `image` (по умолчанию `ghcr.io/prodreams/revu:latest`), `checkout: false`, `fail-on`, `format`
+и `args` — для всего остального.
+
+Если экшен не подходит (или хостинг не GitHub) — то же самое шагом `docker run`. В контейнере job'а
+`actions/checkout` использовать нельзя: это JS-экшен, которому нужен Node, а в образе ReVu его нет.
+Поэтому чекаут делает обычный `actions/checkout`, а образ запускается шагом:
 
 ```yaml
 name: ReVu
@@ -540,12 +578,18 @@ revu:
     AI_PROVIDER_MODEL: gpt-4o-mini
     # GIT_PROVIDER_USER_TOKEN: $REVU_PROJECT_TOKEN   # чтобы писать комментарий в MR
   script:
-    - revu review
+    - revu review --format gitlab-codequality
+  artifacts:
+    when: always                      # отчёт нужен и когда job упал
+    reports:
+      codequality: revu-codequality.json
 ```
 
 Про токен: `CI_JOB_TOKEN` умеет **читать** merge request и его заметки, но не писать их. Поэтому либо
-задайте `GIT_PROVIDER_USER_TOKEN` (project access token с правом `api`) — и ревью уйдёт комментарием
-в MR, либо не задавайте: ревью напечатается в лог пайплайна, и это полноценный сценарий, а не деградация.
+задайте `GIT_PROVIDER_USER_TOKEN` (project access token с правом `api`) — и ревью уйдёт ещё и
+комментарием в MR, либо не задавайте: замечания попадут в отчёт Code Quality, который GitLab покажет
+в виджете MR, а сам текст ревью — в лог пайплайна. Отчёт не создаёт ни одного комментария
+и не требует прав на запись вообще.
 
 ### Gitea Actions
 
@@ -618,7 +662,8 @@ jobs:
 | `--provider` | хостинг; вне CI обязателен |
 | `--depth flat\|deep` | переопределяет `CONTEXT_DEPTH` |
 | `--comment` / `--stdout` | комментарий в PR или печать в лог; по умолчанию — комментарий, если токен это позволяет |
-| `--format text\|json` | текст (по умолчанию) или один JSON-объект на ревью |
+| `--format text\|json\|gitlab-codequality\|github-annotations` | что добавить к выводу: `text` (по умолчанию), машиночитаемый `json`, отчёт Code Quality или аннотации в «Files changed» |
+| `--output PATH` | куда писать отчёт (по умолчанию `revu-codequality.json`) |
 | `--fail-on never\|error\|findings` | когда ронять job: никогда (по умолчанию), если ревью не состоялось, если есть замечания |
 
 Коды возврата: `0` — всё хорошо, `1` — сработал `--fail-on findings`, `2` — ревью не удалось запустить
@@ -649,6 +694,15 @@ revu review --base origin/main --head HEAD --stdout
 - **Сервер и пайплайн на одном репозитории — два ревью на push.** Выберите что-то одно.
 - **`--fail-on` по умолчанию `never`:** пайплайн не краснеет из-за мнения модели. Нужно наоборот —
   `--fail-on error` (ревью не состоялось) или `--fail-on findings` (есть замечания).
+- **Замечания можно показать, ничего не публикуя.** `--format github-annotations` печатает аннотации,
+  которые GitHub показывает прямо у изменённых строк, а `--format gitlab-codequality` пишет отчёт для
+  виджета MR. Ни то, ни другое не создаёт комментариев и не требует прав на запись — это ответ на
+  read-only `CI_JOB_TOKEN`.
+- **О неудачном ревью ReVu скажет в PR.** `NOTIFY_ON_FAILURE` (по умолчанию включено) публикует короткий
+  комментарий с типом ошибки, если есть токен на запись; подробности остаются в логе. Выключите, если
+  не хотите шума.
+- **Ревью всегда попадает в лог пайплайна.** Если токен позволяет комментировать, оно уходит ещё и
+  комментарием: лог читает тот, кто разбирается в пайплайне, а комментарий — автор изменения.
 - **Код репозитория не исполняется.** Ревью читает файлы и разбирает их парсером: ни `make`,
   ни `npm install`, ни `pip install` из ревьюируемого дерева не запускаются.
 

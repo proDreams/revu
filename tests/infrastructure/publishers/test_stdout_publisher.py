@@ -114,3 +114,15 @@ async def test_a_comment_without_the_expected_fields_is_still_printed(publisher,
     )
 
     assert "- `?` — тело" in output.getvalue()
+
+
+async def test_the_invisible_signature_is_not_printed_as_if_it_were_text(publisher, output):
+    """The marker is how ReVu recognises its own comment; a reader does not need it."""
+    review = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[GitHubReviewCommentDTO(path="a.py", line=1, side="RIGHT", body="🤖 ReVu: тут\n\n<!-- revu -->")],
+    )
+
+    await publisher.send_inline(sha="abc", repo_owner="owner/repo", review=review, index=7)
+
+    assert "- `a.py:1` — тут" in output.getvalue()

@@ -12,10 +12,11 @@ from enum import StrEnum
 from pathlib import Path
 
 from revu.application.config import get_logger
-from revu.application.entities.config import ConfigError
+from revu.application.entities.config import ConfigError, GitConnectionConfig
 from revu.application.registry.ai_profiles import AIProfileRegistry
 from revu.application.registry.git_connections import GitConnectionRegistry
 from revu.application.services.context_builder import ContextBuilder
+from revu.application.services.failure_notice import failure_notice
 from revu.application.services.review_runner import (
     ReviewRequest,
     ReviewRunner,
@@ -30,6 +31,13 @@ from revu.infrastructure.git_providers.local import (
     StaticDiffReader,
 )
 from revu.infrastructure.http_client.http_client_gateway import HttpClientGateway
+from revu.infrastructure.publishers.composite_publisher import combine_publishers
+from revu.infrastructure.publishers.github_annotation_publisher import (
+    GitHubAnnotationPublisher,
+)
+from revu.infrastructure.publishers.gitlab_codequality_publisher import (
+    GitLabCodeQualityPublisher,
+)
 from revu.infrastructure.publishers.json_publisher import JsonPublisher
 from revu.infrastructure.publishers.stdout_publisher import StdoutPublisher
 from revu.presentation.cli.environment import CiEnvironment, detect
@@ -42,6 +50,14 @@ logger = get_logger(name=__name__)
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_FAILED = 2
+
+#: Where the code quality report goes when `--output` is not given. GitLab reads it
+#: from wherever `artifacts:reports:codequality` points, so the path is the user's
+#: to choose; this is the name the examples use.
+DEFAULT_REPORT_PATH = Path("revu-codequality.json")
+
+#: A pipeline is retried by restarting the job, which a server has no way to say.
+CI_RETRY_HINT = "Ревью можно перезапустить, перезапустив job."
 
 
 class CliError(RuntimeError):
@@ -69,6 +85,8 @@ class OutputFormat(StrEnum):
 
     TEXT = "text"
     JSON = "json"
+    GITLAB_CODEQUALITY = "gitlab-codequality"
+    GITHUB_ANNOTATIONS = "github-annotations"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +98,8 @@ class ReviewOptions:
     output_format: OutputFormat = OutputFormat.TEXT
     #: ``None`` means "comment when a token allows it, otherwise print".
     comment: bool | None = None
+    #: Where a report is written, when the format asks for one.
+    output: Path | None = None
     depth: str | None = None
     base: str | None = None
     head: str | None = None
@@ -106,10 +126,12 @@ async def run_review(options: ReviewOptions, env: Mapping[str, str] | None = Non
     http_client = HttpClientGateway(settings=settings.http)
     profiles = AIProfileRegistry(settings, http_client)
 
+    connection = GitConnectionRegistry(settings, http_client).resolve(CONNECTION_KEY)
+    host = connection.port
+
     try:
-        connection = GitConnectionRegistry(settings, http_client).resolve(CONNECTION_KEY)
-        reader = _reader(options, environment, connection.port, base, head)
-        publisher = _publisher(options, environment, connection.port)
+        reader = _reader(options, environment, host, base, head)
+        publisher = _publishers(options, environment, host)
 
         logger.info(
             "reviewing %s#%s: %s as %s, diff from %s, answer to %s",
@@ -140,8 +162,9 @@ async def run_review(options: ReviewOptions, env: Mapping[str, str] | None = Non
         raise
     except GitCommandError as exc:
         raise CliError(str(exc)) from exc
-    except Exception:
+    except Exception as exc:
         logger.exception("the review could not be completed")
+        await _notify_failure(connection.config, environment, host, exc)
 
         return EXIT_OK if options.fail_on is FailOn.NEVER else EXIT_FAILED
     finally:
@@ -258,39 +281,81 @@ def _reader(
     return LocalGitPort(root=options.root, base=base, head=head, host=conversation)
 
 
-def _publisher(
+def _publishers(
     options: ReviewOptions,
     environment: CiEnvironment,
     host: CommentPublisherProtocol,
 ) -> CommentPublisherProtocol:
-    """Where the review goes.
+    """Everywhere the review goes.
 
-    Without an explicit choice, a token that may write means a comment under the
-    pull request and no token means the job log: the useful default either way, and
-    never a silent failure to publish.
+    Two things are chosen here: a format that only a machine reads (JSON, or a
+    report that carries the findings into the merge request widget without asking
+    anyone for permission), and whether a comment may be left under the pull
+    request. The job log always gets the review — that is where a person looks when
+    something is off, and it costs nothing.
     """
     if options.output_format is OutputFormat.JSON:
         return JsonPublisher()
+
+    destinations: list[CommentPublisherProtocol] = []
+
+    match options.output_format:
+        case OutputFormat.GITLAB_CODEQUALITY:
+            destinations.append(GitLabCodeQualityPublisher(path=options.output or DEFAULT_REPORT_PATH))
+        case OutputFormat.GITHUB_ANNOTATIONS:
+            destinations.append(GitHubAnnotationPublisher())
 
     wants_comment = options.comment
     if wants_comment is None:
         wants_comment = bool(environment.token) and not environment.token_is_read_only
 
-    if not wants_comment:
-        return StdoutPublisher()
+    if wants_comment:
+        # A comment is an API call, so a token is not optional here — whether the
+        # user asked for it or the default decided it.
+        _require_token(environment, "commenting on the pull request")
 
-    # A comment is an API call, so a token is not optional here — whether the user
-    # asked for it or the default decided it.
-    _require_token(environment, "commenting on the pull request")
+        if environment.token_is_read_only:
+            raise CliError(
+                "this token may read a merge request but not comment on it: GitLab's CI job token "
+                "cannot write notes. Set GIT_PROVIDER_USER_TOKEN to a project access token, or drop "
+                "--comment and let the review go to the job log"
+            )
 
-    if environment.token_is_read_only:
-        raise CliError(
-            "this token may read a merge request but not comment on it: GitLab's CI job token "
-            "cannot write notes. Set GIT_PROVIDER_USER_TOKEN to a project access token, or drop "
-            "--comment and let the review go to the job log"
+        destinations.append(host)
+
+    destinations.append(StdoutPublisher())
+
+    return combine_publishers(*destinations)
+
+
+async def _notify_failure(
+    config: GitConnectionConfig,
+    environment: CiEnvironment,
+    host: CommentPublisherProtocol,
+    exc: BaseException,
+) -> None:
+    """Tell the pull request that the review failed, the way the server does.
+
+    Best effort, like the server's own notice: a failing notice is logged, never
+    raised, so it cannot mask the original error. It is skipped when nothing may
+    comment — a log line is all a job can offer then.
+    """
+    if not config.notify_on_failure:
+        return
+
+    if not environment.token or environment.token_is_read_only or not environment.number or not environment.repo:
+        logger.info("not publishing a failure notice for %s: nothing here may comment", environment.repo or "?")
+
+        return
+
+    try:
+        await host.send_comment(
+            repo_owner=environment.repo,
+            review=failure_notice(exc, retry_hint=CI_RETRY_HINT),
+            index=environment.number,
         )
-
-    return host
+    except Exception:
+        logger.exception("could not publish the failure notice for %s#%s", environment.repo, environment.number)
 
 
 def _require_token(environment: CiEnvironment, what: str) -> None:

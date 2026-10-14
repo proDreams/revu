@@ -51,4 +51,12 @@ def test_the_notice_names_the_error_type_but_not_its_message():
 
 
 def test_the_notice_points_at_the_logs():
-    assert "логи сервиса" in failure_notice(RuntimeError("boom"))
+    assert "Подробности — в логах" in failure_notice(RuntimeError("boom"))
+
+
+def test_the_retry_advice_differs_by_where_revu_runs():
+    """A server waits for another webhook; a pipeline is restarted."""
+    assert "вебхук повторно" in failure_notice(RuntimeError("boom"))
+    assert "перезапустив job" in failure_notice(
+        RuntimeError("boom"), retry_hint="Ревью можно перезапустить, перезапустив job."
+    )

@@ -8,7 +8,9 @@ request nobody watched. The markdown is printed as it would have been posted.
 import sys
 from typing import TextIO
 
+from revu.application.entities import review_marker
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
+from revu.infrastructure.publishers.comment_fields import line_of, path_of
 
 
 class StdoutPublisher:
@@ -35,7 +37,10 @@ class StdoutPublisher:
         self._write("\n**Замечания по строкам:**")
 
         for comment in review.comments:
-            self._write(f"- `{_where(comment)}` — {_one_line(getattr(comment, 'body', ''))}")
+            # The signature is invisible where the comment is posted and noise
+            # here, so the list shows the finding itself.
+            body = review_marker.clean(str(getattr(comment, "body", "")))
+            self._write(f"- `{_where(comment)}` — {_one_line(body)}")
 
     def _write(self, text: str) -> None:
         print(text, file=self._stream, flush=True)
@@ -43,16 +48,10 @@ class StdoutPublisher:
 
 def _where(comment: object) -> str:
     """``path`` or ``path:line``, whichever the comment's host can say."""
-    path = getattr(comment, "path", None) or "?"
-    line = getattr(comment, "line", None)
+    path = path_of(comment) or "?"
+    line = line_of(comment)
 
-    if line is None:
-        line = getattr(comment, "new_line", None)
-
-    if line is None:
-        line = getattr(comment, "old_line", None)
-
-    return f"{path}:{line}" if isinstance(line, int) else str(path)
+    return f"{path}:{line}" if line is not None else path
 
 
 def _one_line(body: object) -> str:

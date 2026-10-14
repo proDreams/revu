@@ -404,3 +404,115 @@ async def test_commenting_without_a_token_at_all_is_refused(checkout, github_env
         await run_review(ReviewOptions(root=checkout, comment=True), github_env)
 
     assert "no token for commenting" in str(caught.value)
+
+
+async def test_the_code_quality_report_is_written_and_the_review_is_still_printed(
+    checkout,
+    github_env,
+    ai_port,
+    tmp_path,
+    capsys,
+):
+    """GitLab's answer to a read-only job token: findings as an artifact, not a note."""
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[GitHubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="тут")],
+    )
+    report = tmp_path / "reports" / "codequality.json"
+
+    code = await run_review(
+        ReviewOptions(root=checkout, output_format=OutputFormat.GITLAB_CODEQUALITY, output=report),
+        github_env,
+    )
+
+    assert code == EXIT_OK
+    assert json.loads(report.read_text(encoding="utf-8"))[0]["location"]["path"] == "app.py"
+    assert "итог" in capsys.readouterr().out
+
+
+async def test_annotations_are_printed_for_the_runner_to_turn_into_marks(
+    checkout,
+    github_env,
+    ai_port,
+    capsys,
+):
+    ai_port.get_inline_response.return_value = ReviewResponseDTO(
+        general_comment="итог",
+        comments=[GitHubReviewCommentDTO(path="app.py", line=2, side="RIGHT", body="тут")],
+    )
+
+    code = await run_review(ReviewOptions(root=checkout, output_format=OutputFormat.GITHUB_ANNOTATIONS), github_env)
+
+    assert code == EXIT_OK
+    assert "::warning file=app.py,line=2,endLine=2,title=ReVu::тут" in capsys.readouterr().out
+
+
+async def test_the_review_reaches_the_log_and_the_pull_request(
+    checkout,
+    github_env,
+    fake_host,
+    capsys,
+):
+    """Both destinations, because a reviewer reads the job and the author reads the PR."""
+    await run_review(
+        ReviewOptions(root=checkout, comment=True),
+        {**github_env, "GITHUB_TOKEN": "gh-token"},
+    )
+
+    fake_host.send_inline.assert_awaited_once()
+    assert "итог" in capsys.readouterr().out
+
+
+async def test_a_failed_review_says_so_in_the_pull_request(checkout, github_env, fake_host, ai_port):
+    """Otherwise a red job is all anyone sees, with no idea what happened."""
+    ai_port.get_inline_response.side_effect = RuntimeError("the provider is down")
+
+    code = await run_review(
+        ReviewOptions(root=checkout, comment=True),
+        {**github_env, "GITHUB_TOKEN": "gh-token"},
+    )
+
+    assert code == EXIT_OK  # --fail-on is never by default
+    notice = fake_host.send_comment.await_args.kwargs["review"]
+    assert "ReVu не смог выполнить ревью" in notice
+    assert "перезапустив job" in notice
+
+
+async def test_the_failure_notice_can_be_turned_off(checkout, github_env, fake_host, ai_port):
+    ai_port.get_inline_response.side_effect = RuntimeError("the provider is down")
+
+    await run_review(
+        ReviewOptions(root=checkout, comment=True),
+        {**github_env, "GITHUB_TOKEN": "gh-token", "NOTIFY_ON_FAILURE": "false"},
+    )
+
+    fake_host.send_comment.assert_not_awaited()
+
+
+async def test_without_a_token_a_failure_stays_in_the_log(checkout, github_env, fake_host, ai_port):
+    ai_port.get_inline_response.side_effect = RuntimeError("the provider is down")
+
+    await run_review(ReviewOptions(root=checkout), github_env)
+
+    fake_host.send_comment.assert_not_awaited()
+
+
+async def test_a_failure_notice_that_cannot_be_posted_does_not_hide_the_failure(
+    checkout,
+    github_env,
+    fake_host,
+    ai_port,
+    caplog,
+):
+    """Best effort by design: it must not mask the error that caused it."""
+    ai_port.get_inline_response.side_effect = RuntimeError("the provider is down")
+    fake_host.send_comment.side_effect = RuntimeError("and the host is too")
+
+    with caplog.at_level("ERROR"):
+        code = await run_review(
+            ReviewOptions(root=checkout, comment=True),
+            {**github_env, "GITHUB_TOKEN": "gh-token"},
+        )
+
+    assert code == EXIT_OK
+    assert "could not publish the failure notice" in caplog.text

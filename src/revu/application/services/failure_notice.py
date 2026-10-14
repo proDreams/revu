@@ -22,6 +22,10 @@ from revu.domain.entities.exceptions.git_provider_exceptions import (
 
 DEFAULT_HINT = "внутренняя ошибка сервиса"
 
+#: How a failed review is retried is the one thing that differs by where ReVu runs:
+#: a server waits for another webhook, a pipeline is restarted.
+SERVER_RETRY_HINT = "Ревью можно перезапустить, отправив вебхук повторно."
+
 # Most specific first: subclasses are matched before their base classes.
 FAILURE_HINTS: tuple[tuple[type[Exception], str], ...] = (
     (InvalidAIOutput, "ИИ-провайдер вернул ответ, который не удалось разобрать"),
@@ -41,11 +45,10 @@ def failure_hint(exc: BaseException) -> str:
     return DEFAULT_HINT
 
 
-def failure_notice(exc: BaseException) -> str:
+def failure_notice(exc: BaseException, retry_hint: str = SERVER_RETRY_HINT) -> str:
     """Build the comment published on the pull request after a failed review."""
     return (
         "⚠️ **ReVu не смог выполнить ревью.**\n\n"
         f"Причина: {failure_hint(exc)} (`{type(exc).__name__}`).\n\n"
-        "Проверьте логи сервиса — там подробности. Ревью можно перезапустить, "
-        "отправив вебхук повторно."
+        f"Подробности — в логах. {retry_hint}"
     )
