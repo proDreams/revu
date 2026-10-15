@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listing reveals what a search does not. It belongs to `deep` alone, and it has its own ceiling rather than
   a share of the code budget.
 
+### Fixed
+
+- **Other people's comments reach the model on a first review.** They were being fetched
+  — the GitLab `/notes` call sits in the log with a `200` next to it — and then dropped
+  before the prompt: the renderer returned early unless ReVu had findings of its own,
+  which on a first review it never has. Found while testing on GitLab, and it was never a
+  GitLab problem: the same early return applied to every host, and a test had frozen that
+  behaviour by asserting the empty result. The two halves of the block now appear on their
+  own terms — ReVu's findings only on a follow-up, when there is something to verify, and
+  the discussion always, because a reviewer who cannot see it repeats what was settled
+  there. The instructions say so too, in both the criteria and the follow-up prompt.
+
 ## [2.4.3] - 2026-10-15
 
 ### Fixed

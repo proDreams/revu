@@ -179,32 +179,41 @@ class BaseAIPort(AIProviderProtocol):
 
     @classmethod
     def _render_previous_review(cls, task: ReviewTask) -> str:
-        """Describe what the pull request already said, for a follow-up review."""
+        """What the pull request already says.
+
+        The two halves appear on different terms. ReVu's own findings are worth reading
+        back only on a follow-up — that is when they can have been addressed, and the job
+        is to say what became of them. What other people wrote is context for *any*
+        review, the first one included: a reviewer who cannot see the discussion repeats
+        what was settled there, and looks like it was not listening.
+        """
         context = task.previous_review
 
-        if context is None or not cls._is_re_review(task):
+        if context is None or not context.comments:
             return ""
 
-        # _is_re_review above guarantees at least one finding, so this list is never
-        # empty; only the discussion is optional.
-        findings = context.findings[-MAX_CONTEXT_FINDINGS:]
-        sections = [
-            "--- ReVu's earlier findings (check whether they were addressed) ---\n"
-            + "\n".join(
-                f"{position}. [{RESOLVED_MARK if comment.resolved else OPEN_MARK}] "
-                f"{cls._describe_comment(comment, with_author=False)}"
-                for position, comment in enumerate(findings, start=1)
+        sections: list[str] = []
+
+        if cls._is_re_review(task):
+            findings = context.findings[-MAX_CONTEXT_FINDINGS:]
+            sections.append(
+                "--- ReVu's earlier findings (check whether they were addressed) ---\n"
+                + "\n".join(
+                    f"{position}. [{RESOLVED_MARK if comment.resolved else OPEN_MARK}] "
+                    f"{cls._describe_comment(comment, with_author=False)}"
+                    for position, comment in enumerate(findings, start=1)
+                )
             )
-        ]
 
         discussion = context.discussion[-MAX_CONTEXT_DISCUSSION:]
+
         if discussion:
             sections.append(
                 "--- Pull request discussion (context, not ReVu findings) ---\n"
                 + "\n".join(f"- {cls._describe_comment(comment)}" for comment in discussion)
             )
 
-        return "\n".join(sections) + "\n\n"
+        return "\n".join(sections) + "\n\n" if sections else ""
 
     @classmethod
     def _describe_comment(cls, comment: PreviousCommentDTO, with_author: bool = True) -> str:

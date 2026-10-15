@@ -188,12 +188,28 @@ def test_comment_mode_switches_prompt_for_a_follow_up():
 
 
 def test_a_conversation_without_revu_findings_is_still_a_first_review():
-    """There is nothing ReVu said, so there is nothing to verify."""
+    """There is nothing ReVu said, so there is nothing to verify — but what other
+    people said is context for this review like for any other."""
     task = make_task(previous_review=_context(DISCUSSION))
 
     assert BaseAIPort._is_re_review(task) is False
     assert BaseAIPort()._inline_instructions(task) == GITHUB_INLINE_PROMPT
-    assert BaseAIPort._render_previous_review(task) == ""
+
+    rendered = BaseAIPort._render_previous_review(task)
+    assert "Pull request discussion" in rendered
+    assert "ReVu's earlier findings" not in rendered
+
+
+def test_other_peoples_comments_reach_the_model_on_a_first_review():
+    """Found while testing on GitLab: the notes were fetched and then dropped before
+    the prompt, because the renderer asked whether ReVu had findings of its own first.
+    """
+    task = make_task(previous_review=_context(DISCUSSION))
+
+    prompt = BaseAIPort._get_diff_prompt(task)
+
+    assert "Pull request discussion" in prompt
+    assert "не трогаем этот модуль" in prompt
 
 
 def test_the_system_prompt_still_extends_a_follow_up():

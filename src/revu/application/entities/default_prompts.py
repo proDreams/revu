@@ -34,6 +34,8 @@ How to report:
   noise.
 - Be concrete: what is wrong, and what to do instead, in one or two sentences.
 - Never leave two comments about the same line.
+- If the data block carries a pull request discussion, read it: do not repeat a point
+  somebody has already made, and do not raise one they settled there.
 
 **Language.** Write every comment, summary and suggestion in Russian. These instructions
 are English and the code, the diff and the discussion may be in any language; the answer
