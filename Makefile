@@ -28,4 +28,4 @@ run:
 # time. The previous `run_prod: install` re-resolved dependencies (without
 # --frozen) and needed the network on every container start.
 run_prod:
-	uv run --frozen --no-sync app
+	PYTHONFAULTHANDLER=1 uv run --frozen --no-sync app

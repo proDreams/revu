@@ -20,7 +20,9 @@ dependencies = [
     # One wheel per grammar instead of the aggregated `tree-sitter-language-pack`:
     # the pack downloads grammars at runtime into a cache directory, which breaks
     # in closed networks and makes the container write state on the first parse.
-    "tree-sitter",
+    # The grammar wheels are built against 0.25: a 0.26 core mismatches their ABI,
+    # and the tree walk then segfaults on poisoned memory.
+    "tree-sitter>=0.25,<0.26",
     "tree-sitter-bash",
     "tree-sitter-c",
     "tree-sitter-c-sharp",
