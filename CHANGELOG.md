@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written about, and the data block stays fenced with an instruction to treat everything
   inside it as material rather than as orders.
 
+- **A review says when it is waiting for the model.** The request line in the log arrives
+  with the response *headers*, not with the answer — httpx logs before it reads the body —
+  so a log can show a `200` in under a second and then look dead for minutes while the
+  model is still generating. That is exactly how a fifty-eight file pull request read as
+  stuck when nothing at all was wrong with it. The line before the call names the pull
+  request, the connection, the mode and the size of the prompt, so the wait has a
+  beginning and a number attached to it.
+
 ## [2.4.1] - 2026-10-15
 
 ### Fixed
