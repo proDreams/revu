@@ -5,6 +5,65 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] - 2026-10-15
+
+### Fixed
+
+- **The image builds again.** Three causes, in the order they surfaced. `uv sync
+  --locked` ran in a layer holding only the metadata, and building the project needs
+  its own source, so the install failed with `Expected a Python module at:
+  src/revu/__init__.py`; the first sync now passes `--no-install-project` and the
+  project is installed once its source has been copied in. The certificate step then
+  failed the same way through `uv run`, which syncs — and therefore builds — before
+  running `certifi`; it uses the environment's own interpreter now. And `uv` came from
+  `ghcr.io/astral-sh/uv:latest`, so a new uv could change how this image builds
+  without a line in the repository changing, which is exactly what had happened: the
+  `uv_build` pin was written against an older uv. The image tag and the backend range
+  are pinned together now.
+- **A version tag is released, and only once.** The release workflow listened for
+  `v*` while every tag in this repository is bare (`1.0.0` through `1.5.0`), so
+  `git push origin 2.4.0` started nothing at all; and the release step rebuilt the tag
+  name from the version, so pushing `2.4.0` would have released `v2.4.0`, creating it
+  if it did not exist. Both spellings are accepted now, and the tag that was pushed is
+  the one released. The image was also built twice — once by the push to `main`, once
+  by the tag that followed — so `build.yaml` is now one workflow for both, and the tag
+  path verifies the image the `main` push published instead of rebuilding it. Its lint
+  step ran nothing either: `--hook-stage manual` selects hooks declaring that stage,
+  and none here do.
+- **Gitea's conversations are read through Gitea's own routes.**
+  `GET /repos/{owner}/{repo}/pulls/{index}/comments` does not exist in Gitea's API —
+  it is GitHub's route, inherited by sharing the GitHub-compatible comment reader —
+  and it answers 404. The review survived that by running without the history, which
+  is what made it quiet: a repeated review on Gitea never saw its own earlier inline
+  findings, so the feature that makes a second review build on the first never worked
+  there. The routes are a per-host hook now, and Gitea reads its issue timeline (an
+  inline review comment is an issue comment carrying a `pull_request_url`) plus
+  `/pulls/{index}/reviews` for the review bodies.
+
+- **Deep context no longer drops a file without saying so.** The tree walk was
+  recursive, and a generated tree is as deep as its source is nested: a call chain
+  a thousand calls long exhausted the interpreter's stack, `parse` swallowed the
+  `RecursionError` and returned an empty result — indistinguishable, at the call
+  site, from a file with nothing in it. A file with 900 nested calls parsed to zero
+  symbols before this; the walk is iterative now and the same file yields its
+  function. Anything that still fails is logged with its traceback instead of
+  disappearing.
+- The walk also holds its `Parser` in a local until the walk is over. `Tree` keeps
+  its language alive, so this is belt and braces rather than a fix — but a parser is
+  cheap to keep and a use-after-free in a C extension cannot be caught.
+- A wrapper definition (a decorator, a template) is asked through the same rule
+  lookup as every other node, so `nested_inside_definition` and `requires_field` are
+  no longer skipped for it.
+
+### Changed
+
+- A refusal by the Git host (401, 403, 404) logs what that host's own documentation
+  requires of a token: Gitea's scope groups (`read:repository` for `/repos/*`,
+  `write:issue` for `issues/*`, a scope required even for a public repository),
+  GitHub's `repo`, GitLab's `api`. It goes to the log and not to the pull request —
+  scopes are the operator's business, while the author only needs to know that the
+  review failed.
+
 ## [2.4.0] - 2026-10-14
 
 ### Added
@@ -268,6 +327,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.4.1]: https://github.com/proDreams/revu/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/proDreams/revu/compare/2.2.0...2.3.0
 [2.2.0]: https://github.com/proDreams/revu/compare/2.1.0...2.2.0

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from revu.application.entities.exceptions.http_gateway_exceptions import HttpGatewayError
 from revu.application.registry.git_connections import GitConnectionRegistry
 from revu.domain.entities.dto.ai_provider_dto import (
     GitHubReviewCommentDTO,
@@ -516,3 +517,14 @@ async def test_a_failure_notice_that_cannot_be_posted_does_not_hide_the_failure(
 
     assert code == EXIT_OK
     assert "could not publish the failure notice" in caplog.text
+
+
+async def test_a_host_refusal_is_explained_in_a_pipeline_log_too(checkout, github_env, ai_port, caplog):
+    """Same reasoning as on the server: the log says where to look, not just that it broke."""
+    ai_port.get_inline_response.side_effect = HttpGatewayError("HTTP 404 from https://git/...", status_code=404)
+
+    with caplog.at_level("WARNING"):
+        code = await run_review(ReviewOptions(root=checkout), github_env)
+
+    assert code == EXIT_OK
+    assert "GitHub: токену нужна область `repo`" in caplog.text

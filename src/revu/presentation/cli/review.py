@@ -16,7 +16,7 @@ from revu.application.entities.config import ConfigError, GitConnectionConfig
 from revu.application.registry.ai_profiles import AIProfileRegistry
 from revu.application.registry.git_connections import GitConnectionRegistry
 from revu.application.services.context_builder import ContextBuilder
-from revu.application.services.failure_notice import failure_notice
+from revu.application.services.failure_notice import access_hint, failure_notice
 from revu.application.services.review_runner import (
     ReviewRequest,
     ReviewRunner,
@@ -163,6 +163,9 @@ async def run_review(options: ReviewOptions, env: Mapping[str, str] | None = Non
     except GitCommandError as exc:
         raise CliError(str(exc)) from exc
     except Exception as exc:
+        if hint := access_hint(connection.config.host, exc):
+            logger.warning("%s", hint)
+
         logger.exception("the review could not be completed")
         await _notify_failure(connection.config, environment, host, exc)
 

@@ -36,6 +36,20 @@ class GiteaPort(GithubCompatibleComments, GitProviderProtocol):
 
         return content.decode("utf-8", errors="replace") if isinstance(content, bytes) else content
 
+    def _conversation_paths(self, repo: str, index: int) -> tuple[tuple[str, bool], ...]:
+        """Gitea's own routes, which differ from GitHub's.
+
+        Gitea serves the issue timeline — and an inline review comment is an issue
+        comment there, carrying a `pull_request_url` — plus `/pulls/{index}/reviews`
+        for the review bodies. GitHub's `/pulls/{index}/comments` does not exist in
+        Gitea's API at all: calling it answers 404 and costs the whole history, so a
+        repeated review would never see its own earlier inline findings.
+        """
+        return (
+            (f"{self.API_PREFIX}repos/{repo}/issues/{index}/comments", False),
+            (f"{self.API_PREFIX}repos/{repo}/pulls/{index}/reviews", False),
+        )
+
     def _file_request(self, repo: str, path: str, revision: str) -> tuple[str, dict[str, str]]:
         return self._url(f"{self.API_PREFIX}repos/{repo}/raw/{path}?ref={revision}"), self._get_headers()
 

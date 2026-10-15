@@ -4,7 +4,7 @@ from starlette import status
 
 from revu.application.config import get_logger
 from revu.application.entities.tenant import TenantContext
-from revu.application.services.failure_notice import failure_notice
+from revu.application.services.failure_notice import access_hint, failure_notice
 from revu.application.services.review_service import ReviewService
 from revu.application.services.revision_store import ReviewedRevisionStore
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
@@ -47,6 +47,11 @@ async def review_pull_request(
     try:
         await service.process_webhook(tenant=tenant, webhook_data=event)
     except Exception as exc:
+        # What the host documents about a refusal, when this is one, so that an
+        # operator does not have to read a traceback to learn where to look.
+        if hint := access_hint(tenant.config.host, exc):
+            logger.warning("%s", hint)
+
         logger.exception(
             "Review failed for connection %s, %s#%s",
             tenant.key,

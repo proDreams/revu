@@ -164,3 +164,30 @@ def test_two_languages_can_be_parsed_one_after_another(parser):
     assert parser.parse("a.py", "def f(): pass").language == "python"
     assert parser.parse("a.go", "package main").language == "go"
     assert parser.parse("a.py", "x = 1").language == "python"
+
+
+def test_a_deeply_nested_file_is_not_lost(parser):
+    """A tree is as deep as the source is nested, and the walk must not care.
+
+    Nine hundred nested calls used to exhaust the interpreter's stack; the
+    `RecursionError` was swallowed by `parse`, so the file came back as one with
+    nothing in it — a deep file silently left out of the review context.
+    """
+    text = "def f():\n    return " + "g(" * 900 + ")" * 900 + "\n"
+
+    parsed = parser.parse("deep.py", text)
+
+    assert [symbol.name for symbol in parsed.symbols] == ["f"]
+    assert parsed.is_parsed is True
+
+
+def test_a_decorator_with_nothing_to_decorate_holds_no_symbol(parser):
+    """A file caught mid-write, which is a normal thing to find in a repository.
+
+    `@dec` on its own parses — the grammars recover rather than fail — and the
+    wrapper has no definition to widen, so the walk has to cope with that.
+    """
+    parsed = parser.parse("x.py", "@dec\n")
+
+    assert parsed.symbols == ()
+    assert parsed.is_parsed is True

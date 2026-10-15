@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 
 from revu.application.app import _core_exception_handler, create_app
 from revu.application.entities.exceptions.ai_adapters_exceptions import InvalidAIOutput
+from revu.application.entities.exceptions.http_gateway_exceptions import HttpGatewayError
 from revu.application.services.review_service import ReviewService
 from revu.domain.entities.dto.pullrequest_dto import PullRequestEventDTO
 from revu.domain.entities.enums.pullrequest_enums import PullRequestActionEnum
@@ -295,3 +296,19 @@ def test_domain_exception_is_reported_as_a_generic_500():
     assert response.status_code == 500
     # Internals are logged, not returned to the caller.
     assert response.json() == {"detail": "Internal application error"}
+
+
+async def test_a_refusal_by_the_git_host_is_explained_in_the_log(caplog, tenant):
+    """An operator should not have to read a traceback to learn where to look.
+
+    The connection in this fixture is GitHub, so the hint names what GitHub's own
+    documentation requires for a repository the token cannot see. The per-host
+    wording, Gitea's scope groups included, is checked where it lives.
+    """
+    service = AsyncMock()
+    service.process_webhook.side_effect = HttpGatewayError("HTTP 404 from https://git/...", status_code=404)
+
+    with caplog.at_level("WARNING"):
+        await review_pull_request(service, tenant, _event())
+
+    assert "GitHub: токену нужна область `repo`" in caplog.text

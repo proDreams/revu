@@ -84,7 +84,7 @@ THEIRS = {"user": {"login": "revu-bot"}, "body": "моя же заметка", "
 
 async def test_fetch_review_context_uses_the_gitea_api_prefix():
     http_client = AsyncMock()
-    http_client.get.side_effect = [[], [], []]
+    http_client.get.side_effect = [[], []]
 
     await _port(http_client).fetch_review_context(repo="owner/repo", index=7)
 
@@ -92,10 +92,29 @@ async def test_fetch_review_context_uses_the_gitea_api_prefix():
     assert all("api/v1/repos/owner/repo/" in url for url in urls)
 
 
+async def test_fetch_review_context_never_asks_for_githubs_inline_route():
+    """Gitea has no `/pulls/{index}/comments`: it answers 404, and the 404 used to
+    cost the whole history — a repeated review never saw its own inline findings.
+
+    Gitea's documented routes are the issue timeline (an inline review comment is
+    an issue comment there) and `/pulls/{index}/reviews` for the review bodies.
+    """
+    http_client = AsyncMock()
+    http_client.get.side_effect = [[], []]
+
+    await _port(http_client).fetch_review_context(repo="owner/repo", index=7)
+
+    urls = [call.kwargs["url"].split("?")[0] for call in http_client.get.await_args_list]
+    assert urls == [
+        f"{GITEA_URL}/api/v1/repos/owner/repo/issues/7/comments",
+        f"{GITEA_URL}/api/v1/repos/owner/repo/pulls/7/reviews",
+    ]
+
+
 async def test_fetch_review_context_tells_its_own_comment_from_the_author_note():
     """Gitea shares the account with the author exactly like GitHub does."""
     http_client = AsyncMock()
-    http_client.get.side_effect = [[THEIRS], [OURS], []]
+    http_client.get.side_effect = [[THEIRS], [OURS]]
 
     context = await _port(http_client).fetch_review_context(repo="owner/repo", index=7)
 
