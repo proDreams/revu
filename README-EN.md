@@ -226,6 +226,7 @@ A few steps are enough to get going:
             - `AI_PROVIDER_API_KEY` — the provider's API key
             - `AI_PROVIDER_MODEL` — the model to use (for example `gpt-4o-mini`)
             - `AI_PROVIDER_TIMEOUT` — how long one request to the model may take, in seconds (`300` by default; the Git hosts' timeout does not apply to the model)
+            - `AI_PROVIDER_RETRIES` — how many times to repeat a request the model did not answer (`4` by default, five attempts; only failures that carried no answer are repeated)
             - `AI_PROVIDER_BASE_URL` — **required** for `openai_compatible`: the URL of the
               OpenAI-compatible provider
             - `AI_PROVIDER_SCOPE` — GigaChat only. Chooses the GigaChat version; it is

@@ -21,6 +21,7 @@ from dynaconf import Dynaconf
 
 from revu.application.entities.config import (
     CONNECTION_KEY_RE,
+    DEFAULT_AI_MAX_RETRIES,
     DEFAULT_AI_TIMEOUT,
     DEFAULT_APP_HOST,
     DEFAULT_APP_PORT,
@@ -171,6 +172,9 @@ def _parse_ai_profiles(raw: Mapping[str, Any]) -> dict[str, AIProfileConfig]:
             # How long one request to the model may take. A slow local model wants
             # more than the Git client's thirty seconds.
             timeout=float(body.get("AI_PROVIDER_TIMEOUT") or DEFAULT_AI_TIMEOUT),
+            # A negative count would mean "no attempts at all", which is a way of
+            # saying the profile is misconfigured; zero means "do not repeat".
+            max_retries=max(0, int(body.get("AI_PROVIDER_RETRIES") or DEFAULT_AI_MAX_RETRIES)),
         )
 
     return profiles

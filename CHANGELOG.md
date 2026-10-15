@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the model as well, and the SDK's own retries spent three attempts of it before failing
   with `APITimeoutError` on a fifty-eight-file pull request. An AI profile now takes its
   own `AI_PROVIDER_TIMEOUT`, five minutes by default.
+- **A model that fails to answer is asked again, visibly.** The SDK's own retries are
+  silent and were capped at three attempts; an AI profile now says how many it wants
+  (`AI_PROVIDER_RETRIES`, four retries — five attempts — by default), every attempt is
+  logged with its reason, and the waits double with jitter, believing a `Retry-After`
+  when the host sends one. Only failures that carried no verdict are repeated: a model
+  that refused the answer is not asked five times for the same refusal. The SDK's own
+  retries are switched off, so the configured count is the count that happens — the
+  worst case is that count times `AI_PROVIDER_TIMEOUT`, which is why both are settings.
 - **The probes around a changed file are fewer and quieter.** `deep` finds the tests and
   dependencies of a changed file by guessing paths and asking; for an icon, a font or an
   image that guess is a family of names that cannot exist, and one brand-kit pull request
