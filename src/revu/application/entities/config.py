@@ -59,6 +59,18 @@ DEFAULT_CONTEXT_DEPTH = ContextDepthEnum.FLAT
 DEFAULT_CONTEXT_MAX_FILES = 12
 DEFAULT_CONTEXT_MAX_CHARS = 40_000
 DEFAULT_HTTP_TIMEOUT = 30.0
+
+#: The HTTP client above is built for the Git hosts: a call that has not answered in
+#: seconds is not going to. A model writing a review is a different animal — it reads a
+#: whole diff and streams a structured answer — and thirty seconds is not enough for a
+#: large pull request, which is how one review ended in an `APITimeoutError` after the
+#: SDK had spent three attempts of thirty seconds each.
+DEFAULT_AI_TIMEOUT = 300.0
+
+#: How many times a request may be repeated after a failure that carried no verdict
+#: from the model. The SDK's own retries are switched off in favour of these, so the
+#: count here is the count that happens — and, unlike the SDK's, each one is logged.
+DEFAULT_AI_MAX_RETRIES = 4
 DEFAULT_HTTP_ATTEMPTS = 3
 DEFAULT_HTTP_BACKOFF = 0.5
 DEFAULT_LOG_DIR = "logs"
@@ -111,6 +123,8 @@ class AIProfileConfig:
     base_url: str | None = None
     scope: str | None = None
     folder_id: str | None = None
+    timeout: float = DEFAULT_AI_TIMEOUT
+    max_retries: int = DEFAULT_AI_MAX_RETRIES
 
 
 @dataclass(frozen=True, slots=True)

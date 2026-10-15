@@ -85,6 +85,7 @@ class HttpClientGateway:
         json: Any | None = None,
         headers: Mapping[str, str] | None = None,
         expect_json: bool = True,
+        expect_missing: bool = False,
     ) -> Any:
         attempts = self.attempts
 
@@ -116,7 +117,13 @@ class HttpClientGateway:
                 raise HTTPGatewayAttemptLimitExceeded(f"Limit exceeded. Last error: {exc}")
 
             if resp.is_error:
-                logger.warning("HTTP %s from %s: %s", resp.status_code, url, resp.text)
+                # A probe that misses is an answer, not an incident: `fetch_file` asks
+                # for paths that may not exist and turns the 404 into a `None`. The
+                # exception below is what makes a mandatory call loud.
+                if expect_missing and resp.status_code == 404:
+                    logger.debug("HTTP 404 from %s: %s", url, resp.text)
+                else:
+                    logger.warning("HTTP %s from %s: %s", resp.status_code, url, resp.text)
 
                 if resp.status_code in retryable_statuses and attempt < attempts:
                     logger.warning("Retrying %s %s after HTTP %s", method, url, resp.status_code)
@@ -149,8 +156,15 @@ class HttpClientGateway:
         url: str,
         headers: Mapping[str, str] | None = None,
         expect_json: bool = True,
+        expect_missing: bool = False,
     ) -> Any:
-        return await self._request(method="GET", url=url, headers=headers, expect_json=expect_json)
+        return await self._request(
+            method="GET",
+            url=url,
+            headers=headers,
+            expect_json=expect_json,
+            expect_missing=expect_missing,
+        )
 
     def get_client(self) -> httpx.AsyncClient:
         return self._client

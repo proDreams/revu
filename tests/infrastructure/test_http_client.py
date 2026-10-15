@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import AsyncMock
 
 import httpx
@@ -252,4 +253,17 @@ async def test_get_calls_request_with_correct_args(monkeypatch):
         url=url,
         headers={"x": "z"},
         expect_json=False,
+        expect_missing=False,
     )
+
+
+async def test_a_probe_that_misses_is_not_logged_as_an_incident(caplog):
+    """`fetch_file` asks for paths that may not exist: forty 404s per review is not news."""
+    response = httpx.Response(404, text="not found", request=httpx.Request("GET", "https://git/x"))
+    gateway = _gateway(response)
+
+    with caplog.at_level("DEBUG"):
+        with pytest.raises(HttpGatewayError):
+            await gateway.get("https://git/x", expect_missing=True)
+
+    assert [record for record in caplog.records if record.levelno >= logging.WARNING] == []

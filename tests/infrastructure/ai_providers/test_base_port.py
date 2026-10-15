@@ -98,7 +98,7 @@ def test_the_diff_prompt_carries_the_task_text():
     assert "BODY" in prompt
     assert "THE DIFF" in prompt
     # Untrusted content is delimited so the model treats it as data.
-    assert "НАЧАЛО ДАННЫХ PR" in prompt and "КОНЕЦ ДАННЫХ PR" in prompt
+    assert "PR DATA BEGIN" in prompt and "PR DATA END" in prompt
 
 
 @pytest.mark.parametrize(
@@ -207,13 +207,13 @@ def test_the_earlier_findings_travel_in_the_user_message():
 
     prompt = BaseAIPort._get_diff_prompt(task)
 
-    assert "Замечания ReVu ранее" in prompt
+    assert "ReVu's earlier findings" in prompt
     assert "1. [не исправлено] app.py:12 — импорты лучше построчно" in prompt
-    assert "Обсуждение в PR" in prompt
+    assert "Pull request discussion" in prompt
     assert "- @ivan: не трогаем этот модуль" in prompt
     # Inside the guarded block, like the diff: a comment is untrusted text too.
-    assert prompt.index("=== НАЧАЛО ДАННЫХ PR ===") < prompt.index("Замечания ReVu ранее")
-    assert prompt.index("Замечания ReVu ранее") < prompt.index("=== КОНЕЦ ДАННЫХ PR ===")
+    assert prompt.index("=== PR DATA BEGIN ===") < prompt.index("ReVu's earlier findings")
+    assert prompt.index("ReVu's earlier findings") < prompt.index("=== PR DATA END ===")
 
 
 def test_a_finding_the_host_resolved_is_marked_as_such():
@@ -227,8 +227,8 @@ def test_a_finding_the_host_resolved_is_marked_as_such():
 def test_a_first_review_message_has_no_extra_sections():
     prompt = BaseAIPort._get_diff_prompt(make_task())
 
-    assert "Замечания ReVu ранее" not in prompt
-    assert "Обсуждение в PR" not in prompt
+    assert "ReVu's earlier findings" not in prompt
+    assert "Pull request discussion" not in prompt
 
 
 def test_a_comment_body_is_flattened_and_capped():
@@ -293,7 +293,7 @@ CODE_CONTEXT = CodeContextDTO(
 def test_the_surrounding_code_travels_in_the_user_message():
     prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
 
-    assert "Окружающий код" in prompt
+    assert "Surrounding code" in prompt
     assert "[src/app/service.py] Service.run (строки 1-20)" in prompt
     assert "def run(): ..." in prompt
     assert "[src/app/repo.py] Repo.save (сигнатура)" in prompt
@@ -303,8 +303,8 @@ def test_the_context_stays_inside_the_guarded_block():
     """Repository code is untrusted text like anything else in a pull request."""
     prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
 
-    assert prompt.index("=== НАЧАЛО ДАННЫХ PR ===") < prompt.index("Окружающий код")
-    assert prompt.index("Окружающий код") < prompt.index("=== КОНЕЦ ДАННЫХ PR ===")
+    assert prompt.index("=== PR DATA BEGIN ===") < prompt.index("Surrounding code")
+    assert prompt.index("Surrounding code") < prompt.index("=== PR DATA END ===")
 
 
 def test_the_review_is_told_to_comment_only_on_the_diff():
@@ -316,13 +316,13 @@ def test_the_review_is_told_to_comment_only_on_the_diff():
 def test_a_review_without_context_has_no_context_section():
     prompt = BaseAIPort._get_diff_prompt(make_task())
 
-    assert "Окружающий код" not in prompt
+    assert "Surrounding code" not in prompt
 
 
 def test_an_empty_context_is_not_a_section_either():
     prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CodeContextDTO()))
 
-    assert "Окружающий код" not in prompt
+    assert "Surrounding code" not in prompt
 
 
 def test_a_truncated_context_admits_it():
@@ -339,4 +339,29 @@ def test_the_previous_review_and_the_context_can_both_be_present():
 
     prompt = BaseAIPort._get_diff_prompt(task)
 
-    assert prompt.index("Замечания ReVu ранее") < prompt.index("Окружающий код")
+    assert prompt.index("ReVu's earlier findings") < prompt.index("Surrounding code")
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        COMMENT_PROMPT,
+        GITHUB_INLINE_PROMPT,
+        GITEA_INLINE_PROMPT,
+        GITLAB_INLINE_PROMPT,
+        BITBUCKET_INLINE_PROMPT,
+        RE_REVIEW_COMMENT_PROMPT,
+        GITHUB_RE_REVIEW_PROMPT,
+        GITEA_RE_REVIEW_PROMPT,
+        GITLAB_RE_REVIEW_PROMPT,
+        BITBUCKET_RE_REVIEW_PROMPT,
+    ],
+)
+def test_every_prompt_asks_for_the_answer_in_russian(prompt):
+    """The instructions are English to spend fewer tokens; the review is Russian.
+
+    Dropping this line would silently change the language of every review a person
+    reads, so it is a test rather than a convention: the prompts are edited far more
+    often than they are read end to end.
+    """
+    assert "in Russian" in prompt

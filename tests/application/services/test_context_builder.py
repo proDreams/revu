@@ -9,6 +9,7 @@ from revu.application.services.context_builder import (
     ContextBuilder,
     ContextRequest,
     changed_files,
+    data_file,
     resolve_module,
     skipped_path,
 )
@@ -676,3 +677,16 @@ async def test_the_test_lookup_stops_when_the_budget_is_gone():
 
     assert [entry.kind for entry in context.entries] == ["symbol"]
     assert context.stats.truncated is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["assets/logo.svg", "web/static/cat.png", "fonts/inter.woff2", "docs/report.pdf", "static/favicon.ico"],
+)
+def test_an_asset_is_data_and_not_code(path):
+    assert data_file(path) is True
+
+
+@pytest.mark.parametrize("path", ["src/app/service.py", "frontend/src/lib/brand/marks.ts", "Dockerfile", "docs/x.md"])
+def test_source_config_and_markdown_are_not_assets(path):
+    assert data_file(path) is False

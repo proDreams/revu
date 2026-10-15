@@ -120,7 +120,14 @@ class GithubCompatibleComments:
         url, headers = self._file_request(repo, path, revision)
 
         try:
-            content = await self.http_client.get(url=url, headers=headers, expect_json=False)
+            # A probe: a path that is not there is an answer, so the 404 is not
+            # logged as an incident — on a large pull request there are many.
+            content = await self.http_client.get(
+                url=url,
+                headers=headers,
+                expect_json=False,
+                expect_missing=True,
+            )
         except HttpGatewayError as exc:
             # A path that does not exist is an answer, not a failure: callers probe.
             if exc.status_code == 404:

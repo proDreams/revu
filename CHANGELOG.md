@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.1] - 2026-10-15
+## [2.4.2] - 2026-10-15
 
 ### Fixed
 
@@ -21,6 +21,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   walk and not in the grammar. The core is held below 0.26 until the wheels move, and
   `run_prod` sets `PYTHONFAULTHANDLER=1`, so a crash of any kind now leaves a Python
   stack in the container log instead of an exit code on its own.
+- **A review of a large pull request is no longer cut off at thirty seconds.** The AI
+  client shares this service's HTTP client, so `HTTP_CLIENT_TIMEOUT` — thirty seconds,
+  which is right for a Git host and wrong for a model reading a whole diff — applied to
+  the model as well, and the SDK's own retries spent three attempts of it before failing
+  with `APITimeoutError` on a fifty-eight-file pull request. An AI profile now takes its
+  own `AI_PROVIDER_TIMEOUT`, five minutes by default.
+- **A model that fails to answer is asked again, visibly.** The SDK's own retries are
+  silent and were capped at three attempts; an AI profile now says how many it wants
+  (`AI_PROVIDER_RETRIES`, four retries — five attempts — by default), every attempt is
+  logged with its reason, and the waits double with jitter, believing a `Retry-After`
+  when the host sends one. Only failures that carried no verdict are repeated: a model
+  that refused the answer is not asked five times for the same refusal. The SDK's own
+  retries are switched off, so the configured count is the count that happens — the
+  worst case is that count times `AI_PROVIDER_TIMEOUT`, which is why both are settings.
+- **The probes around a changed file are fewer and quieter.** `deep` finds the tests and
+  dependencies of a changed file by guessing paths and asking; for an icon, a font or an
+  image that guess is a family of names that cannot exist, and one brand-kit pull request
+  produced forty 404s for assets nobody reviews. A changed file that is data rather than
+  code is skipped now — the diff still carries it — and a 404 on a probe is logged at
+  debug level instead of as a warning, because for a probe a miss is an answer.
+
+### Changed
+
+- **The prompts are English now, and a third smaller.** Tokenizers spend noticeably more
+  of them on Russian Cyrillic than on the same content in English, and the instructions
+  travel with every review: 22 648 characters became 13 930, with the reviewer's criteria
+  stated once instead of twice across the two modes. The *answer* is still Russian — that
+  is what a person reads — and the rule saying so lives in the prompts themselves, with a
+  test that fails if a later edit drops it. Rereading them also produced two things worth
+  having: a review no longer spells out what the project's own linters and formatters
+  already enforce (formatting, import order, line length), because the pipeline reports
+  those and a review that repeats them is noise; and both modes now say plainly that a
+  change which is fine needs no comment at all. What was worth keeping was kept — the
+  diff handed to the model carries a line number on every line and the prompt tells it to
+  copy those numbers rather than count, which is what keeps a comment on the line it was
+  written about, and the data block stays fenced with an instruction to treat everything
+  inside it as material rather than as orders.
+
+## [2.4.1] - 2026-10-15
+
+### Fixed
+
 - **The image builds again.** Three causes, in the order they surfaced. `uv sync
   --locked` ran in a layer holding only the metadata, and building the project needs
   its own source, so the install failed with `Expected a Python module at:
@@ -339,6 +381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.4.2]: https://github.com/proDreams/revu/compare/2.4.1...2.4.2
 [2.4.1]: https://github.com/proDreams/revu/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/proDreams/revu/compare/2.2.0...2.3.0

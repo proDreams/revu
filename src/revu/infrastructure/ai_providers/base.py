@@ -41,7 +41,7 @@ _FENCED_JSON_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(?P<body>.*?)(?:```)?\s*$", 
 # recognise what was already raised, so both lists and each body are capped.
 #: The surrounding code carries its own heading, because a model that comments on
 #: code the pull request did not change turns a helpful review into noise.
-CODE_CONTEXT_HEADER = """--- Окружающий код (в этом PR не менялся) ---
+CODE_CONTEXT_HEADER = """--- Surrounding code (not changed by this pull request) ---
 Это тела изменённых функций, сигнатуры того, что они вызывают, и связанные тесты.
 Комментировать можно только строки из диффа ниже: по этому коду инлайн-комментарии не оставляй.
 Если проблема видна только здесь — скажи о ней в общем комментарии."""
@@ -177,7 +177,7 @@ class BaseAIPort(AIProviderProtocol):
         # empty; only the discussion is optional.
         findings = context.findings[-MAX_CONTEXT_FINDINGS:]
         sections = [
-            "--- Замечания ReVu ранее (проверь, исправлены ли они) ---\n"
+            "--- ReVu's earlier findings (check whether they were addressed) ---\n"
             + "\n".join(
                 f"{position}. [{RESOLVED_MARK if comment.resolved else OPEN_MARK}] "
                 f"{cls._describe_comment(comment, with_author=False)}"
@@ -188,7 +188,7 @@ class BaseAIPort(AIProviderProtocol):
         discussion = context.discussion[-MAX_CONTEXT_DISCUSSION:]
         if discussion:
             sections.append(
-                "--- Обсуждение в PR (контекст, не замечания ReVu) ---\n"
+                "--- Pull request discussion (context, not ReVu findings) ---\n"
                 + "\n".join(f"- {cls._describe_comment(comment)}" for comment in discussion)
             )
 
