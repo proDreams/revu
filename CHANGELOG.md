@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The crash that restarted the container is gone, and it was a version.** The
+  parser core was `tree-sitter` 0.26 while every grammar wheel here is built against
+  0.25, and the mismatch showed up where the grammar's field tables are read: the tree
+  walk touched node fields through a stale view of the language and, under memory
+  pressure, the process died with SIGSEGV — `Error 139` in the container, which no
+  Python `except` can catch and which arrives as a bare restart. Once the heap was
+  poisoned on purpose it reproduced every time (`PYTHONMALLOC=malloc
+  MALLOC_PERTURB_=165`): six crashes in six runs on 0.26.0, none in eight on 0.25.2,
+  while plain parsing never crashed on either — which is what placed the fault in the
+  walk and not in the grammar. The core is held below 0.26 until the wheels move, and
+  `run_prod` sets `PYTHONFAULTHANDLER=1`, so a crash of any kind now leaves a Python
+  stack in the container log instead of an exit code on its own.
 - **The image builds again.** Three causes, in the order they surfaced. `uv sync
   --locked` ran in a layer holding only the metadata, and building the project needs
   its own source, so the install failed with `Expected a Python module at:
