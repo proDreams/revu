@@ -79,19 +79,16 @@ class GithubCompatibleComments:
     async def fetch_review_context(self, repo: str, index: int) -> ReviewContextDTO | None:
         """Comments the pull request already has, oldest first.
 
-        A pull request carries three separate conversations: the issue timeline,
-        the inline review comments and the review bodies (where an inline summary
-        goes). All three are read, or a re-review would miss its own summary.
+        Which conversations a pull request has is the host's business, so the paths
+        come from :meth:`_conversation_paths`. Reading a route the host does not
+        serve costs the whole history: Gitea answers 404 for `/pulls/{index}/comments`,
+        which is GitHub's route and not Gitea's.
         """
         headers = self._get_headers()
 
         mapped: list[tuple[str, PreviousCommentDTO | None]] = []
 
-        for path, inline in (
-            (f"{self.API_PREFIX}repos/{repo}/issues/{index}/comments", False),
-            (f"{self.API_PREFIX}repos/{repo}/pulls/{index}/comments", True),
-            (f"{self.API_PREFIX}repos/{repo}/pulls/{index}/reviews", False),
-        ):
+        for path, inline in self._conversation_paths(repo, index):
             raws = await fetch_list_pages(
                 self.http_client,
                 partial(self._comment_page_url, path),
@@ -100,6 +97,19 @@ class GithubCompatibleComments:
             mapped.extend((sort_key(raw), self._comment(raw, inline=inline)) for raw in raws)
 
         return build_context(mapped)
+
+    def _conversation_paths(self, repo: str, index: int) -> tuple[tuple[str, bool], ...]:
+        """The conversations to read, as ``(path, inline)`` pairs.
+
+        GitHub's shape: the issue timeline, the inline review comments, and the
+        review bodies (where an inline summary goes). A host whose API differs
+        overrides this.
+        """
+        return (
+            (f"{self.API_PREFIX}repos/{repo}/issues/{index}/comments", False),
+            (f"{self.API_PREFIX}repos/{repo}/pulls/{index}/comments", True),
+            (f"{self.API_PREFIX}repos/{repo}/pulls/{index}/reviews", False),
+        )
 
     def _file_request(self, repo: str, path: str, revision: str) -> tuple[str, dict[str, str]]:
         """URL and headers that return a file's raw text. Host-specific."""
