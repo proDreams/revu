@@ -98,6 +98,20 @@ class ReviewRunner:
             code_context=code_context,
         )
 
+        # A model reading a diff this size is not fast, and the wait is the longest
+        # silence in the log: say what is being waited for, and on how much.
+        logger.info(
+            "asking the model about %s#%s on connection %s (mode %s): diff=%d chars, context=%d entries",
+            request.repo,
+            request.number,
+            config.key,
+            # Not `.value`: an unknown mode reaches this line before the branch that
+            # rejects it, and the log must not be the thing that fails first.
+            config.review_mode,
+            len(task.diff),
+            len(code_context.entries),
+        )
+
         outcome = await self._publish(
             publisher=publisher,
             ai_port=ai_port,

@@ -24,8 +24,10 @@ logger = get_logger(name=__name__)
 #: Failures worth repeating: the request never got a verdict from the model, so the
 #: same question may well get an answer next time. A reply the model refused to give
 #: — a schema it cannot satisfy, a context too long for it — is deliberately absent:
-#: repeating that spends the whole prompt again for the same refusal.
-TRANSIENT_FAILURES = (APIConnectionError, RateLimitError, InternalServerError)
+#: repeating that spends the whole prompt again for the same refusal. `TimeoutError`
+#: is the deadline below, and is transient by construction: another attempt starts
+#: over instead of waiting on an answer that may never end.
+TRANSIENT_FAILURES = (APIConnectionError, RateLimitError, InternalServerError, TimeoutError)
 
 #: The wait between attempts: doubled each time, capped, and jittered. Several
 #: connections can share one provider, and without jitter their retries line up.
@@ -85,11 +87,7 @@ class OpenAICompatibleAdapter:
 
         while True:
             try:
-                return await self._openai_client.chat.completions.parse(
-                    model=self.model,  # type: ignore
-                    messages=messages,
-                    response_format=response_model,
-                )
+                return await self._parse(messages, response_model)
             except TRANSIENT_FAILURES as exc:
                 if attempt >= attempts:
                     logger.warning("the model did not answer after %d attempts: %r", attempts, exc)
@@ -106,6 +104,29 @@ class OpenAICompatibleAdapter:
                 )
                 await _sleep(delay)
                 attempt += 1
+
+    async def _parse(
+        self,
+        messages: list[ChatCompletionUserMessageParam | ChatCompletionSystemMessageParam],
+        response_model: type[BaseModel] | Omit,
+    ) -> ParsedChatCompletion:
+        """Ask once, with a deadline on the whole answer.
+
+        The HTTP timeout measures the gap between two chunks, not the length of an
+        answer: a model that keeps generating never trips it, and a review can sit
+        there for as long as the model keeps talking — one did, for minutes, while the
+        log looked healthy. This is the bound that makes `AI_PROVIDER_TIMEOUT` mean
+        what it says: one request to the model, however long the model spends writing.
+        """
+        try:
+            async with asyncio.timeout(self.profile.timeout):
+                return await self._openai_client.chat.completions.parse(
+                    model=self.model,  # type: ignore
+                    messages=messages,
+                    response_format=response_model,
+                )
+        except TimeoutError as exc:
+            raise TimeoutError(f"the model did not answer within {self.profile.timeout:.0f}s") from exc
 
     @staticmethod
     def _backoff(attempt: int, exc: BaseException) -> float:

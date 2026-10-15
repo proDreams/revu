@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import replace
 from unittest.mock import ANY, AsyncMock
 
@@ -171,3 +172,26 @@ def test_a_retry_after_that_is_a_date_falls_back_to_our_own_backoff():
 async def test_the_sleep_helper_is_the_only_real_wait():
     """Everything else is patched; this is the line that would actually wait."""
     await real_sleep(0)
+
+
+async def test_an_answer_that_never_ends_is_cut_off(http_gateway, caplog):
+    """The HTTP timeout is the gap between chunks, so a chatty model can run forever.
+
+    One review sat behind exactly that for minutes while the log looked healthy: the
+    response headers had arrived, so the request looked answered, and the body simply
+    kept coming. The deadline is what makes the profile's timeout mean one request —
+    generation included — and a retry is a fresh attempt rather than more waiting.
+    """
+
+    async def never_ends(*args, **kwargs):
+        await asyncio.sleep(30)
+
+    adapter = _adapter(http_gateway, profile=replace(_profile(), timeout=0.01, max_retries=1))
+    adapter._openai_client.chat.completions.parse.side_effect = never_ends
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(TimeoutError, match="did not answer within"):
+            await adapter.get_chat_response(messages=MESSAGES)
+
+    assert adapter._openai_client.chat.completions.parse.await_count == 2
+    assert "attempt 1 of 2" in caplog.text
