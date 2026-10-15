@@ -42,11 +42,18 @@ _FENCED_JSON_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(?P<body>.*?)(?:```)?\s*$", 
 #: The surrounding code carries its own heading, because a model that comments on
 #: code the pull request did not change turns a helpful review into noise.
 CODE_CONTEXT_HEADER = """--- Surrounding code (not changed by this pull request) ---
-Это тела изменённых функций, сигнатуры того, что они вызывают, и связанные тесты.
-Комментировать можно только строки из диффа ниже: по этому коду инлайн-комментарии не оставляй.
-Если проблема видна только здесь — скажи о ней в общем комментарии."""
+Bodies of the changed functions, signatures of what they call, and the tests that cover
+them. Only lines from the diff below may be commented on: leave no inline comment about
+this code. If a problem is visible only here, raise it in the general comment."""
 
-CODE_CONTEXT_TRUNCATED = "Внимание: контекст приведён частично, лимит исчерпан."
+CODE_CONTEXT_TRUNCATED = "Note: this context is partial, its budget ran out."
+
+#: The shape of the repository, read before any of the code above: it is what makes a
+#: path in the diff into a place — `uv.lock` says which toolchain this project uses,
+#: `packages/` says where the components live.
+STRUCTURE_HEADER = """--- Repository structure (names only) ---
+The layout of the project, so that the paths in the diff have somewhere to sit. This is
+not code and nothing in it is to be reviewed."""
 
 MAX_CONTEXT_FINDINGS = 25
 MAX_CONTEXT_DISCUSSION = 25
@@ -155,7 +162,12 @@ class BaseAIPort(AIProviderProtocol):
         if context is None or context.is_empty:
             return ""
 
-        blocks = [CODE_CONTEXT_HEADER, ""]
+        blocks: list[str] = []
+
+        if context.structure:
+            blocks.extend([STRUCTURE_HEADER, context.structure, ""])
+
+        blocks.extend([CODE_CONTEXT_HEADER, ""])
 
         if context.stats.truncated:
             blocks.extend([CODE_CONTEXT_TRUNCATED, ""])
@@ -167,32 +179,41 @@ class BaseAIPort(AIProviderProtocol):
 
     @classmethod
     def _render_previous_review(cls, task: ReviewTask) -> str:
-        """Describe what the pull request already said, for a follow-up review."""
+        """What the pull request already says.
+
+        The two halves appear on different terms. ReVu's own findings are worth reading
+        back only on a follow-up — that is when they can have been addressed, and the job
+        is to say what became of them. What other people wrote is context for *any*
+        review, the first one included: a reviewer who cannot see the discussion repeats
+        what was settled there, and looks like it was not listening.
+        """
         context = task.previous_review
 
-        if context is None or not cls._is_re_review(task):
+        if context is None or not context.comments:
             return ""
 
-        # _is_re_review above guarantees at least one finding, so this list is never
-        # empty; only the discussion is optional.
-        findings = context.findings[-MAX_CONTEXT_FINDINGS:]
-        sections = [
-            "--- ReVu's earlier findings (check whether they were addressed) ---\n"
-            + "\n".join(
-                f"{position}. [{RESOLVED_MARK if comment.resolved else OPEN_MARK}] "
-                f"{cls._describe_comment(comment, with_author=False)}"
-                for position, comment in enumerate(findings, start=1)
+        sections: list[str] = []
+
+        if cls._is_re_review(task):
+            findings = context.findings[-MAX_CONTEXT_FINDINGS:]
+            sections.append(
+                "--- ReVu's earlier findings (check whether they were addressed) ---\n"
+                + "\n".join(
+                    f"{position}. [{RESOLVED_MARK if comment.resolved else OPEN_MARK}] "
+                    f"{cls._describe_comment(comment, with_author=False)}"
+                    for position, comment in enumerate(findings, start=1)
+                )
             )
-        ]
 
         discussion = context.discussion[-MAX_CONTEXT_DISCUSSION:]
+
         if discussion:
             sections.append(
                 "--- Pull request discussion (context, not ReVu findings) ---\n"
                 + "\n".join(f"- {cls._describe_comment(comment)}" for comment in discussion)
             )
 
-        return "\n".join(sections) + "\n\n"
+        return "\n".join(sections) + "\n\n" if sections else ""
 
     @classmethod
     def _describe_comment(cls, comment: PreviousCommentDTO, with_author: bool = True) -> str:

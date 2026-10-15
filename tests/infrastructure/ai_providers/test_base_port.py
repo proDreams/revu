@@ -188,12 +188,28 @@ def test_comment_mode_switches_prompt_for_a_follow_up():
 
 
 def test_a_conversation_without_revu_findings_is_still_a_first_review():
-    """There is nothing ReVu said, so there is nothing to verify."""
+    """There is nothing ReVu said, so there is nothing to verify — but what other
+    people said is context for this review like for any other."""
     task = make_task(previous_review=_context(DISCUSSION))
 
     assert BaseAIPort._is_re_review(task) is False
     assert BaseAIPort()._inline_instructions(task) == GITHUB_INLINE_PROMPT
-    assert BaseAIPort._render_previous_review(task) == ""
+
+    rendered = BaseAIPort._render_previous_review(task)
+    assert "Pull request discussion" in rendered
+    assert "ReVu's earlier findings" not in rendered
+
+
+def test_other_peoples_comments_reach_the_model_on_a_first_review():
+    """Found while testing on GitLab: the notes were fetched and then dropped before
+    the prompt, because the renderer asked whether ReVu had findings of its own first.
+    """
+    task = make_task(previous_review=_context(DISCUSSION))
+
+    prompt = BaseAIPort._get_diff_prompt(task)
+
+    assert "Pull request discussion" in prompt
+    assert "не трогаем этот модуль" in prompt
 
 
 def test_the_system_prompt_still_extends_a_follow_up():
@@ -310,7 +326,7 @@ def test_the_context_stays_inside_the_guarded_block():
 def test_the_review_is_told_to_comment_only_on_the_diff():
     prompt = BaseAIPort._get_diff_prompt(make_task(code_context=CODE_CONTEXT))
 
-    assert "Комментировать можно только строки из диффа" in prompt
+    assert "Only lines from the diff below may be commented on" in prompt
 
 
 def test_a_review_without_context_has_no_context_section():
@@ -331,7 +347,7 @@ def test_a_truncated_context_admits_it():
         stats=ContextStatsDTO(depth="deep", chars=200, truncated=True),
     )
 
-    assert "контекст приведён частично" in BaseAIPort._get_diff_prompt(make_task(code_context=truncated))
+    assert "this context is partial" in BaseAIPort._get_diff_prompt(make_task(code_context=truncated))
 
 
 def test_the_previous_review_and_the_context_can_both_be_present():
@@ -365,3 +381,16 @@ def test_every_prompt_asks_for_the_answer_in_russian(prompt):
     often than they are read end to end.
     """
     assert "in Russian" in prompt
+
+
+def test_the_repository_structure_is_rendered_before_the_code():
+    task = make_task(code_context=CodeContextDTO(structure="./: pyproject.toml, uv.lock"))
+
+    prompt = BaseAIPort._get_diff_prompt(task)
+
+    assert "Repository structure" in prompt
+    assert prompt.index("uv.lock") < prompt.index("Surrounding code")
+
+
+def test_a_context_of_nothing_but_a_structure_is_not_empty():
+    assert CodeContextDTO(structure="./: uv.lock").is_empty is False

@@ -6,10 +6,12 @@ import pytest
 
 from revu.application.entities.enums.context_depth_enums import ContextDepthEnum
 from revu.application.services.context_builder import (
+    STRUCTURE_MAX_CHARS,
     ContextBuilder,
     ContextRequest,
     changed_files,
     data_file,
+    project_structure,
     resolve_module,
     skipped_path,
 )
@@ -160,7 +162,7 @@ async def test_the_changed_symbol_is_included_in_full():
     entry = context.entries[0]
     assert (entry.kind, entry.path) == ("symbol", "src/app/service.py")
     assert entry.text == "def run(...):\n    body of run"
-    assert "строки 1-20" in entry.title
+    assert "lines 1-20" in entry.title
     assert context.stats.symbols == 1
     assert context.stats.body_files == 1
     assert port.list_files.await_count == 1
@@ -249,7 +251,7 @@ async def test_the_test_file_next_to_the_code_is_included():
 
     tests_entry = context.entries[-1]
     assert tests_entry.kind == "tests"
-    assert "тесты: 2" in tests_entry.title
+    assert "tests: 2" in tests_entry.title
     assert context.stats.tests == 2
 
 
@@ -690,3 +692,66 @@ def test_an_asset_is_data_and_not_code(path):
 @pytest.mark.parametrize("path", ["src/app/service.py", "frontend/src/lib/brand/marks.ts", "Dockerfile", "docs/x.md"])
 def test_source_config_and_markdown_are_not_assets(path):
     assert data_file(path) is False
+
+
+def test_the_structure_leads_with_the_manifests_and_hides_secrets():
+    """A listing reveals what a search cannot, and a capped list must still say which
+    toolchain this project uses."""
+    text = project_structure(
+        (
+            "src/app/service.py",
+            "src/app/other.py",
+            "uv.lock",
+            "pyproject.toml",
+            "node_modules/left-pad/index.js",
+            ".env.production",
+            "config/secrets.yaml",
+        )
+    )
+
+    assert text.splitlines()[0].startswith("./: pyproject.toml, uv.lock")
+    assert any(line.startswith("src/app/: ") for line in text.splitlines())
+    # Names of secrets and of generated directories never reach the prompt.
+    assert ".env" not in text
+    assert "secrets" not in text
+    assert "node_modules" not in text
+
+
+def test_a_capped_listing_says_what_it_left_out():
+    paths = tuple(f"packages/component-{i}/src/module_{j}.py" for i in range(80) for j in range(20))
+
+    text = project_structure(paths)
+
+    assert len(text) <= STRUCTURE_MAX_CHARS
+    assert "more directories" in text
+
+
+def test_one_directory_with_many_files_is_summarised_in_place():
+    paths = tuple(f"src/app/module_{i}.py" for i in range(50))
+
+    text = project_structure(paths)
+
+    assert len(text.splitlines()) == 1
+    assert "… +" in text
+
+
+async def test_deep_context_carries_the_shape_of_the_repository():
+    parser = FakeParser({"src/app/service.py": ParsedFileDTO(language="python")})
+
+    port, context = await build(
+        parser,
+        contents={"src/app/service.py": "def run(): pass"},
+        tree=("uv.lock", "src/app/service.py"),
+    )
+
+    assert "uv.lock" in context.structure
+    # It cost no extra request: the tree was already read for tests and dependencies.
+    assert port.list_files.await_count == 1
+
+
+async def test_flat_depth_has_no_structure_even_when_the_tree_is_known():
+    parser = FakeParser({"src/app/service.py": ParsedFileDTO(language="python")})
+
+    _port, context = await build(parser, contents={}, depth=ContextDepthEnum.FLAT)
+
+    assert context.structure == ""

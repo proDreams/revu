@@ -370,3 +370,45 @@ async def test_fetch_file_raises_anything_that_is_not_a_missing_path():
 
     with pytest.raises(HttpGatewayError):
         await _port(http_client).fetch_file(repo="group/project", path="app.py", revision="abc")
+
+
+async def test_a_diff_note_keeps_the_file_and_line_it_was_written_about():
+    """GitLab returns inline comments in the same `/notes` list, carrying a position.
+
+    Verified against a real instance before writing this: 21 of the 27 notes on one
+    merge request were DiffNotes, so the `/notes` route is the right one and the
+    position parsing below is the code that reads them.
+    """
+    diff_note = {
+        "id": 501,
+        "type": "DiffNote",
+        "system": False,
+        "body": "эта строка упадёт на пустом словаре",
+        "author": {"username": "olga"},
+        "resolved": False,
+        "position": {"new_path": "dicoms/processing/czm.py", "new_line": 42},
+    }
+
+    context = await _port(_context_client([diff_note])).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    comment = context.discussion[0]
+    assert (comment.path, comment.line) == ("dicoms/processing/czm.py", 42)
+    assert comment.author == "olga"
+
+
+async def test_a_diff_note_on_a_removed_line_falls_back_to_the_old_side():
+    """A note on a deleted line has no new line, only an old one."""
+    removed = {
+        "id": 502,
+        "type": "DiffNote",
+        "system": False,
+        "body": "эту строку не стоило удалять",
+        "author": {"username": "olga"},
+        "position": {"old_path": "app.py", "old_line": 17},
+    }
+
+    context = await _port(_context_client([removed])).fetch_review_context(repo="group/project", index=11)
+
+    assert context is not None
+    assert (context.discussion[0].path, context.discussion[0].line) == ("app.py", 17)

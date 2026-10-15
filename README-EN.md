@@ -83,7 +83,7 @@ separate profile each.
     * A first review and a follow-up use different prompts.
 * **Manageable context depth**
     * `flat` (the default) — a review of the diff and the pull request discussion.
-    * `deep` — the model also sees the full body of every changed function, the signatures
+    * `deep` — the model also sees the repository's structure, the full body of every changed function, the signatures
       of what that code calls, and the tests next to it. Fewer invented findings and fewer
       "you did not handle case X" remarks about a case handled twenty lines below.
     * The context budgets are configurable, and every review logs what it cost: how many
@@ -461,7 +461,12 @@ ordinary prompt.
 ### Context depth
 
 By default ReVu reviews the diff: predictable in cost, and nothing extra leaves your
-network. The `deep` mode adds exactly three things:
+network. The `deep` mode adds exactly four things:
+
+0. **the shape of the repository** — one line per directory, a few names each, manifests and lock files
+   first. `uv.lock` in that list is how the review knows the project uses uv, `packages/` is where the
+   components live, `.gitea/workflows/` is what builds it. The tree is read for tests and dependencies
+   anyway, so this costs no extra request;
 
 1. **the full body of the changed functions** — a diff shows three lines around the edit,
    while the model is judging the whole method. This is the most common cause both of
@@ -622,7 +627,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.3 review
+            ghcr.io/prodreams/revu:2.5.0 review
 ```
 
 ### GitLab CI
@@ -632,7 +637,7 @@ Here a container is the native model, and `CI_JOB_TOKEN` is available straight a
 ```yaml
 revu:
   stage: test
-  image: ghcr.io/prodreams/revu:2.4.3
+  image: ghcr.io/prodreams/revu:2.5.0
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -689,7 +694,7 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
             -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.3 review
+            ghcr.io/prodreams/revu:2.5.0 review
 ```
 
 ### Environment variables

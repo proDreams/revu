@@ -16,6 +16,7 @@ Two rules shape everything here:
 """
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from unidiff import PatchSet
@@ -82,6 +83,30 @@ DATA_SUFFIXES = (
     ".webm",
     ".mov",
 )
+
+#: How much of the context the repository's shape may take. Names only, and a small
+#: share of it: the structure is background — the thing that tells uv from pip because
+#: `uv.lock` is in it, or that `packages/` holds the components — and it must not
+#: crowd out the code the pull request actually touches.
+STRUCTURE_MAX_CHARS = 2_500
+
+#: How many names of one directory are listed before it is summarised. A directory with
+#: three hundred files must still leave room for the other directories.
+STRUCTURE_NAMES_PER_LINE = 6
+
+#: Names that say what a project *is*: a lock file or a manifest. They are listed first
+#: in their directory, because a list capped at six names that buries `uv.lock` is a list
+#: that fails at its one job — telling the reviewer which toolchain this repository uses.
+MANIFEST_SUFFIXES = (".lock", ".toml", ".mod", ".sum", ".gradle", ".gemspec", ".cabal", ".csproj", ".sln")
+MANIFEST_NAMES = ("package.json", "requirements.txt", "go.mod", "cargo.toml", "gemfile")
+
+#: The rest of the toolchain — how it is packaged and shipped — which is worth seeing
+#: before the ordinary sources but not before the manifests.
+BUILD_SUFFIXES = (".yaml", ".yml")
+BUILD_NAMES = ("makefile", "dockerfile", "justfile", "procfile")
+
+#: The heading the structure block carries into the prompt.
+STRUCTURE_TITLE = "Project structure"
 
 #: Extensions a module specifier may resolve to, in the order they are tried.
 MODULE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rb", ".php", ".java")
@@ -203,10 +228,18 @@ class ContextBuilder:
 
         budget = _Budget(chars_left=request.max_chars, extra_files_left=request.max_extra_files)
         gathering = _Gathering()
+        # Declared before the attempt: a listing that never arrives must degrade to a
+        # review without a structure, not to an UnboundLocalError on the way out.
+        structure = ""
         degraded = ""
 
         try:
             known_paths = await self._list_files(port, request, gathering)
+            # Its own ceiling, and never more than the whole budget: the structure is
+            # an addition to the context rather than a rival for it — a few hundred
+            # tokens that say what kind of project this is — so it does not take room
+            # away from the code the pull request touches.
+            structure = project_structure(known_paths, max_chars=min(STRUCTURE_MAX_CHARS, request.max_chars))
             await self._collect(port, request, changed, known_paths, budget, gathering)
         except Exception as exc:  # noqa: BLE001 - context must never fail a review
             degraded = f"{type(exc).__name__}: {exc}"
@@ -219,6 +252,7 @@ class ContextBuilder:
 
         return CodeContextDTO(
             entries=tuple(gathering.entries),
+            structure=structure,
             stats=ContextStatsDTO(
                 depth=request.depth,
                 changed_files=len(changed),
@@ -228,7 +262,7 @@ class ContextBuilder:
                 signatures=gathering.signatures,
                 tests=gathering.tests,
                 unparsed_files=gathering.unparsed_files,
-                chars=sum(entry.size for entry in gathering.entries),
+                chars=sum(entry.size for entry in gathering.entries) + len(structure),
                 truncated=budget.truncated,
                 requests=gathering.requests,
                 seconds=time.monotonic() - started,
@@ -332,7 +366,7 @@ class ContextBuilder:
             entry = ContextEntryDTO(
                 kind="symbol",
                 path=file.path,
-                title=f"{symbol.qualified_name} (строки {symbol.start_line}-{symbol.end_line})",
+                title=f"{symbol.qualified_name} (lines {symbol.start_line}-{symbol.end_line})",
                 text=symbol.body,
             )
 
@@ -369,7 +403,7 @@ class ContextBuilder:
         entry = ContextEntryDTO(
             kind="file",
             path=file.path,
-            title=f"{file.path} (файл целиком: {reason})",
+            title=f"{file.path} (the whole file: {reason})",
             text=source.content,
         )
 
@@ -435,7 +469,7 @@ class ContextBuilder:
             entry = ContextEntryDTO(
                 kind="signature",
                 path=target,
-                title=f"{symbol.qualified_name} (сигнатура, строки {symbol.start_line}-{symbol.end_line})",
+                title=f"{symbol.qualified_name} (signature, lines {symbol.start_line}-{symbol.end_line})",
                 text=symbol.signature,
             )
 
@@ -477,7 +511,7 @@ class ContextBuilder:
             entry = ContextEntryDTO(
                 kind="tests",
                 path=candidate,
-                title=f"{candidate} (тесты: {len(tests.parsed.symbols)})",
+                title=f"{candidate} (tests: {len(tests.parsed.symbols)})",
                 text="\n".join(symbol.signature for symbol in tests.parsed.symbols),
             )
 
@@ -543,6 +577,82 @@ def _ranges(lines: list[int]) -> tuple[tuple[int, int], ...]:
     ranges.append((first, previous))
 
     return tuple(ranges)
+
+
+def hidden_in_structure(path: str) -> bool:
+    """Whether a path must not even be *named* to the model.
+
+    A listing reveals what a search does not, so secrets are kept out of it entirely.
+    Generated directories go too — `node_modules` is noise in a prompt as it is in a
+    review — while a name that merely looks machine-made is kept: `uv.lock` is the most
+    useful string in this block, because that is how a reviewer knows the project uses uv.
+    """
+    lowered = path.casefold()
+    name = lowered.rsplit("/", 1)[-1]
+
+    if any(directory in lowered for directory in SKIPPED_DIRECTORIES):
+        return True
+
+    return name in SKIPPED_NAMES or name.startswith(".env") or any(part in name for part in SKIPPED_NAME_PARTS)
+
+
+def _structure_rank(name: str) -> int:
+    """How early a name earns its place in a capped list: 0 is the loudest."""
+    lowered = name.casefold()
+
+    if lowered.endswith(MANIFEST_SUFFIXES) or lowered in MANIFEST_NAMES:
+        return 0
+
+    if lowered.endswith(BUILD_SUFFIXES) or lowered in BUILD_NAMES:
+        return 1
+
+    return 2
+
+
+def project_structure(paths: Sequence[str], max_chars: int = STRUCTURE_MAX_CHARS) -> str:
+    """The shape of the repository: one line per directory, sorted, capped.
+
+    Grouped by directory rather than listed path by path — shorter, and it reads as a
+    layout. Each line names a few files, the toolchain ones first, and says how many it
+    left out; what does not fit at all is summarised the same way, so a capped listing is
+    never mistaken for a small repository.
+    """
+    by_directory: dict[str, list[str]] = {}
+
+    for path in sorted(set(paths)):
+        if hidden_in_structure(path):
+            continue
+
+        directory, _, name = path.rpartition("/")
+        by_directory.setdefault(directory, []).append(name)
+
+    lines: list[str] = []
+
+    for directory, names in sorted(by_directory.items()):
+        ordered = sorted(names, key=lambda name: (_structure_rank(name), name))
+        shown = ordered[:STRUCTURE_NAMES_PER_LINE]
+        rest = len(names) - len(shown)
+        listing = ", ".join(shown) + (f", … +{rest}" if rest else "")
+
+        lines.append(f"{directory or '.'}/: {listing}")
+
+    kept: list[str] = []
+    used = 0
+
+    for line in lines:
+        if used + len(line) + 1 > max_chars:
+            break
+
+        kept.append(line)
+        used += len(line) + 1
+
+    unlisted = len(set(paths)) - sum(len(names) for names in by_directory.values())
+    note = f"… and {len(lines) - len(kept)} more directories" if len(kept) < len(lines) else ""
+
+    if unlisted:
+        note = f"{note}, {unlisted} files not listed" if note else f"… {unlisted} files not listed"
+
+    return "\n".join([*kept, note]) if note else "\n".join(kept)
 
 
 def data_file(path: str) -> bool:

@@ -63,12 +63,16 @@ class CodeContextDTO:
     """Everything that will be shown to the model besides the diff and the comments."""
 
     entries: tuple[ContextEntryDTO, ...] = ()
+    #: The shape of the repository: directories with a few names each. Not an entry —
+    #: it is not code around the change but the ground the change stands on, and it is
+    #: read by the model before it reads any of the entries.
+    structure: str = ""
     stats: ContextStatsDTO = field(default_factory=ContextStatsDTO)
 
     @property
     def is_empty(self) -> bool:
-        return not self.entries
+        return not self.entries and not self.structure
 
     @property
     def chars(self) -> int:
-        return sum(entry.size for entry in self.entries)
+        return sum(entry.size for entry in self.entries) + len(self.structure)
