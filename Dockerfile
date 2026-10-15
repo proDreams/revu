@@ -14,7 +14,9 @@ RUN uv sync --locked --no-install-project
 
 RUN curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" \
     -o /tmp/russian_ca.pem \
-    && cat /tmp/russian_ca.pem >> "$(uv run python -m certifi)"
+    && cat /tmp/russian_ca.pem >> "$(/code/.venv/bin/python -m certifi)"
+# The virtual environment's interpreter, not `uv run`: `uv run` syncs first, and
+# syncing builds the project, whose source is copied two steps below.
 
 COPY . /code/
 
