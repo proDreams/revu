@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-10-15
+
+### Added
+
+- **`deep` shows the model the shape of the repository.** The tree was already being read — it is how the
+  tests and dependencies of a changed file are found — so the listing costs no extra request: one line per
+  directory, a few names each, manifests and lock files first, capped at a couple of thousand characters.
+  `uv.lock` appearing there is how a review knows the project uses uv, even though the file itself is never
+  sent; a directory with three hundred files still shows the six that matter and says how many it left out.
+  Secrets are the exception to being listed by name: `.env`, keys and credentials stay out of it, because a
+  listing reveals what a search does not. It belongs to `deep` alone, and it has its own ceiling rather than
+  a share of the code budget.
+
 ## [2.4.3] - 2026-10-15
 
 ### Fixed
@@ -413,7 +426,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
-[2.4.3]: https://github.com/proDreams/revu/compare/2.4.2...2.4.3
+[2.5.0]: https://github.com/proDreams/revu/compare/2.4.2...2.5.0
 [2.4.2]: https://github.com/proDreams/revu/compare/2.4.1...2.4.2
 [2.4.1]: https://github.com/proDreams/revu/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0
