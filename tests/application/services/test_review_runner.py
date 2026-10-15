@@ -258,3 +258,21 @@ async def test_the_progress_line_still_counts_only_the_findings(runner, reader, 
     published = publisher.send_inline.await_args.kwargs["review"]
     assert "Из прошлых замечаний исправлено: 1 из 2" in published.general_comment
     assert outcome.re_review is True
+
+
+async def test_the_wait_for_the_model_is_visible_in_the_log(runner, reader, publisher, ai_port, caplog):
+    """The longest silence in a review log is the model thinking; name it.
+
+    Without this line the log ends at the request and looks stuck: a response whose
+    headers arrive in under a second can still be minutes of generation behind it.
+    """
+    with caplog.at_level("INFO"):
+        await runner.run(
+            reader=reader,
+            publisher=publisher,
+            ai_port=ai_port,
+            config=make_connection(review_mode=ReviewModeEnum.INLINE),
+            request=REQUEST,
+        )
+
+    assert f"asking the model about {REQUEST.repo}#{REQUEST.number}" in caplog.text
