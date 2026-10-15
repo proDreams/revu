@@ -61,6 +61,7 @@ dev = [
 ]
 
 [build-system]
+# Ships inside uv, so this range and the `uv` tag in the Dockerfile move together.
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
 
