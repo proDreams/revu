@@ -24,10 +24,16 @@ logger = get_logger(name=__name__)
 #: Failures worth repeating: the request never got a verdict from the model, so the
 #: same question may well get an answer next time. A reply the model refused to give
 #: — a schema it cannot satisfy, a context too long for it — is deliberately absent:
-#: repeating that spends the whole prompt again for the same refusal. `TimeoutError`
-#: is the deadline below, and is transient by construction: another attempt starts
-#: over instead of waiting on an answer that may never end.
-TRANSIENT_FAILURES = (APIConnectionError, RateLimitError, InternalServerError, TimeoutError)
+#: repeating that spends the whole prompt again for the same refusal. Our own deadline
+#: is handled apart from these, because it means something different.
+TRANSIENT_FAILURES = (APIConnectionError, RateLimitError, InternalServerError)
+
+#: How many more attempts a deadline gets. Unlike a broken connection, running out of
+#: time is usually about the request rather than about luck: the same prompt on the same
+#: model takes the same minutes again. Five attempts of five minutes is twenty-five
+#: minutes spent on a review that was not going to arrive, at the price of the whole
+#: prompt each time — one more attempt is a second chance, five is a habit.
+DEADLINE_RETRIES = 1
 
 #: The wait between attempts: doubled each time, capped, and jittered. Several
 #: connections can share one provider, and without jitter their retries line up.
@@ -85,25 +91,43 @@ class OpenAICompatibleAdapter:
         attempt = 1
         attempts = self.profile.max_retries + 1
 
+        deadlines = 0
+
         while True:
             try:
                 return await self._parse(messages, response_model)
-            except TRANSIENT_FAILURES as exc:
-                if attempt >= attempts:
-                    logger.warning("the model did not answer after %d attempts: %r", attempts, exc)
+            except TimeoutError as exc:
+                if deadlines >= DEADLINE_RETRIES or attempt >= attempts:
+                    self._give_up(attempt, exc)
 
                     raise
 
-                delay = self._backoff(attempt, exc)
-                logger.warning(
-                    "the model did not answer (attempt %d of %d): %r; retrying in %.1fs",
-                    attempt,
-                    attempts,
-                    exc,
-                    delay,
-                )
-                await _sleep(delay)
+                deadlines += 1
+                await self._retry(attempt, attempts, exc)
                 attempt += 1
+            except TRANSIENT_FAILURES as exc:
+                if attempt >= attempts:
+                    self._give_up(attempt, exc)
+
+                    raise
+
+                await self._retry(attempt, attempts, exc)
+                attempt += 1
+
+    @staticmethod
+    def _give_up(attempt: int, exc: BaseException) -> None:
+        logger.warning("the model did not answer after %d attempts: %r", attempt, exc)
+
+    async def _retry(self, attempt: int, attempts: int, exc: BaseException) -> None:
+        delay = self._backoff(attempt, exc)
+        logger.warning(
+            "the model did not answer (attempt %d of %d): %r; retrying in %.1fs",
+            attempt,
+            attempts,
+            exc,
+            delay,
+        )
+        await _sleep(delay)
 
     async def _parse(
         self,

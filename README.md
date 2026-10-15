@@ -206,7 +206,7 @@ ReVu — это AI-ревью для Pull Request: self-hosted вебхук-се
             - `AI_PROVIDER_API_KEY` - API Ключ от ИИ-провайдера
             - `AI_PROVIDER_MODEL` - используемая модель (например, `gpt-4o-mini`)
             - `AI_PROVIDER_TIMEOUT` - сколько секунд отпущено на ВЕСЬ запрос к модели, включая генерацию ответа (по умолчанию `300`; таймаут Git-хостов к ИИ не применяется, а таймаут httpx не подходит — он считает паузы между чанками, а не общее время)
-            - `AI_PROVIDER_RETRIES` - сколько раз повторить запрос, если модель не ответила (по умолчанию `4`, то есть пять попыток; повторяются только сбои без ответа модели)
+            - `AI_PROVIDER_RETRIES` - сколько раз повторить запрос, если модель не ответила (по умолчанию `4`, то есть пять попыток; повторяются только сбои без ответа модели); превышение `AI_PROVIDER_TIMEOUT` повторяется только один раз
             - `AI_PROVIDER_BASE_URL` - **обязателен** для `openai_compatible`, URL от OpenAI-совместимого провайдера
             - `AI_PROVIDER_SCOPE` - только для GigaChat. Определяет используемую версию GigaChat, указан в личном кабинете.
             - `AI_PROVIDER_FOLDER_ID` - **обязателен** для YandexGPT. Идентификатор рабочей директории.
@@ -563,7 +563,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.1 review
+            ghcr.io/prodreams/revu:2.4.3 review
 ```
 
 ### GitLab CI
@@ -573,7 +573,7 @@ jobs:
 ```yaml
 revu:
   stage: test
-  image: ghcr.io/prodreams/revu:2.4.1
+  image: ghcr.io/prodreams/revu:2.4.3
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -628,7 +628,7 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
             -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.1 review
+            ghcr.io/prodreams/revu:2.4.3 review
 ```
 
 ### Переменные окружения

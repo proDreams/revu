@@ -195,3 +195,23 @@ async def test_an_answer_that_never_ends_is_cut_off(http_gateway, caplog):
 
     assert adapter._openai_client.chat.completions.parse.await_count == 2
     assert "attempt 1 of 2" in caplog.text
+
+
+async def test_a_deadline_gets_two_attempts_whatever_the_retry_count(http_gateway):
+    """Running out of time is about the request, not about luck.
+
+    The same prompt on the same model takes the same minutes again, so the full retry
+    count would spend five times the timeout and five times the prompt on a review that
+    was not going to arrive. One more attempt is a second chance; five is a habit.
+    """
+
+    async def never_ends(*args, **kwargs):
+        await asyncio.sleep(30)
+
+    adapter = _adapter(http_gateway, profile=replace(_profile(), timeout=0.01, max_retries=4))
+    adapter._openai_client.chat.completions.parse.side_effect = never_ends
+
+    with pytest.raises(TimeoutError, match="did not answer within"):
+        await adapter.get_chat_response(messages=MESSAGES)
+
+    assert adapter._openai_client.chat.completions.parse.await_count == 2
