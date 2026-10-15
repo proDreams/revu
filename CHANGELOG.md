@@ -67,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request, the connection, the mode and the size of the prompt, so the wait has a
   beginning and a number attached to it.
 
+- **A model answer has a deadline now, not just a socket timeout.** `AI_PROVIDER_TIMEOUT`
+  was handed to the HTTP client, whose read timeout measures the *gap* between two
+  chunks — so a model that keeps generating never trips it, and a review of a
+  nineteen-file pull request sat for minutes with its headers already in the log, looking
+  answered. A second review in the same log finished in seventy-eight seconds, which is
+  what a slow model looks like when it does finish. The whole request is now under that
+  timeout, generation included: a model that will not stop is cut off and asked again,
+  which also makes "the attempt count times the timeout" the real worst case rather than
+  a number nothing enforced.
+
 ## [2.4.1] - 2026-10-15
 
 ### Fixed
