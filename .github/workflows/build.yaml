@@ -1,28 +1,3 @@
-# Build and Release: one workflow, two kinds of push, and no work done twice.
-#
-# A push to `main` lints, tests and publishes the image (`:<version>` and `:latest`),
-# which is what keeps `docker compose pull` working between releases.
-#
-# A version tag lints and tests the same commit and then releases: the guards below,
-# a GitHub Release whose body is the changelog section, and — deliberately — no
-# second image build. The image for that version was published by the push to `main`
-# that preceded the tag, and this path verifies that it exists instead of rebuilding
-# it, so pushing a tag neither waits for nor duplicates a build. The manual run is
-# the recovery path and does build: it is what to use when the tag went up before
-# this workflow reached the default branch, or when a release failed partway.
-#
-# Why the guards. A release should be unable to exist without a changelog entry, and
-# a tag should be unable to disagree with pyproject.toml. `uv sync --frozen` is a
-# third guard in practice: a version bumped in pyproject.toml but not in uv.lock
-# fails the install before anything is built.
-#
-# Both tag spellings are accepted — `2.4.0`, which is this repository's convention
-# (1.0.0 through 1.5.0), and `v2.4.0`, which is the more common one elsewhere — and
-# the version is compared with the `v` stripped. A tag push that carries the workflow
-# file itself can be missed: GitHub evaluates the tag trigger against the workflows
-# already present on the default branch. When that happens, re-push the tag (delete
-# it on the remote and push it again) or use the manual run.
-
 name: Build and Release
 
 on:
@@ -32,13 +7,11 @@ on:
     tags:
       - "[0-9]*" # this repository's convention: 2.4.0
       - "v[0-9]*" # and the other one: v2.4.0
-  # Release the version currently in pyproject.toml, building the image as it goes.
-  # Use it when a tag push was missed, or to re-run a release that failed partway.
   workflow_dispatch:
 
 permissions:
-  contents: write # create the GitHub Release
-  packages: write # push the image
+  contents: write
+  packages: write
 
 jobs:
   lint:
@@ -81,13 +54,9 @@ jobs:
           uv run pre-commit install
 
       - name: Lint pre-commit
-        # No `--hook-stage manual`: no hook in this repository declares that stage,
-        # so passing it ran nothing at all.
         run: uv run pre-commit run --all-files
 
       - name: Type check with project dependencies
-        # pre-commit runs mypy in an isolated env without the dependencies, so it
-        # cannot see errors at the fastapi/pydantic/openai boundary. This step can.
         run: uv run mypy src
 
       - name: Run Telegram Notify Action
@@ -127,7 +96,6 @@ jobs:
           enable-cache: false
 
       - name: Install dependencies
-        # `--frozen`: a version bumped in pyproject.toml but not in uv.lock fails here.
         run: uv sync --all-extras --frozen
 
       - name: Run tests
@@ -151,10 +119,7 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      # Whether the image is built here: yes on a branch push and on a manual run,
-      # no on a tag push, where the main push before the tag already built it.
       build: ${{ steps.resolve.outputs.build }}
-      # Whether a GitHub Release is created: on a tag push and on a manual run.
       release: ${{ steps.resolve.outputs.release }}
 
     steps:
@@ -225,8 +190,6 @@ jobs:
 
       - name: Verify the released image exists
         if: needs.version.outputs.build == 'false'
-        # The tag path does not rebuild: this is what keeps a release from pointing
-        # at an image nobody published.
         run: |
           image="ghcr.io/prodreams/revu:${{ needs.version.outputs.version }}"
           if ! docker manifest inspect "$image" >/dev/null 2>&1; then
@@ -296,7 +259,6 @@ jobs:
           tag_name: ${{ needs.version.outputs.tag }}
           name: ${{ needs.version.outputs.tag }}
           body_path: release-notes.md
-          # A version with a hyphen is a pre-release candidate, by SemVer's own rule.
           prerelease: ${{ contains(needs.version.outputs.version, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

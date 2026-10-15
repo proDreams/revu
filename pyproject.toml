@@ -57,16 +57,10 @@ dependencies = [
 dev = [
     "pre-commit>=4.7.0",
     "ruff>=0.17.0",
-    # Kept in step with the mirrors-mypy rev in .pre-commit-config.yaml: the hook
-    # checks the whole tree without project dependencies, while `uv run mypy src`
-    # checks the dependency boundaries too (see the CI workflow).
     "mypy>=1.20,<2",
 ]
 
 [build-system]
-# `uv_build` ships with uv, and uv refuses a requirement its own version does not
-# satisfy: `>=0.13,<0.14` is what the image's `uv` (pinned in the Dockerfile) is.
-# The pin has to move together with that image tag.
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
 
@@ -87,18 +81,10 @@ line-length = 120
 indent-width = 4
 
 [tool.ruff.lint]
-# E/W/F перекрывают то, что раньше давали flake8 и autopep8, I — isort,
-# UP — pyupgrade. E501 выключен: длинные строки — это промпты на русском,
-# ломать их конкатенацией нельзя, всё остальное держит ruff-format.
 select = ["E", "W", "F", "I", "UP"]
 ignore = ["E501"]
 
 [tool.mypy]
-# Хук mirrors-mypy выполняется в изолированном окружении без зависимостей
-# проекта и сам передаёт --ignore-missing-imports, поэтому настройка закреплена
-# и здесь: поведение гейта должно быть воспроизводимым и при ручном запуске.
-# Полноценная проверка границ с fastapi/pydantic/openai требует запуска из venv
-# проекта: uv run --with mypy mypy src
 ignore_missing_imports = true
 no_implicit_optional = true
 warn_redundant_casts = true
