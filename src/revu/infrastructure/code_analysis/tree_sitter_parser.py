@@ -22,6 +22,7 @@ from typing import Final
 
 from tree_sitter import Language, Node, Parser
 
+from revu.application.config import get_logger
 from revu.domain.entities.dto.parsed_file_dto import ImportDTO, ParsedFileDTO, SymbolDTO
 from revu.infrastructure.code_analysis.languages import (
     SPECS,
@@ -30,6 +31,8 @@ from revu.infrastructure.code_analysis.languages import (
     grammar_for_path,
     language_for,
 )
+
+logger = get_logger(name=__name__)
 
 #: Node types whose text is a name, across all the grammars we carry. A union is
 #: enough: a grammar only ever produces its own node types, and no grammar uses one
@@ -116,37 +119,53 @@ def _clean(text: str) -> str:
 
 
 def _first_of_kind(node: Node, kinds: frozenset[str]) -> Node | None:
-    """The first node of a kind in document order, the node itself included."""
-    if node.type in kinds:
-        return node
+    """The first node of a kind in document order, the node itself included.
 
-    for child in node.named_children:
-        found = _first_of_kind(child, kinds)
-        if found is not None:
-            return found
+    Walked with an explicit stack rather than by recursion: a generated tree can be
+    as deep as the source is nested, and a file with a call chain a thousand calls
+    long would otherwise exhaust the interpreter's stack — which `parse` used to
+    swallow, leaving the file silently unparsed.
+    """
+    stack: list[Node] = [node]
+
+    while stack:
+        current = stack.pop()
+
+        if current.type in kinds:
+            return current
+
+        stack.extend(reversed(current.named_children))
 
     return None
 
 
 def _last_of_kind(node: Node, kinds: frozenset[str]) -> Node | None:
     """The rightmost node of a kind, which is how an attribute chain is flattened."""
-    if node.type in kinds:
-        return node
+    stack: list[Node] = [node]
 
-    for child in reversed(node.named_children):
-        found = _last_of_kind(child, kinds)
-        if found is not None:
-            return found
+    while stack:
+        current = stack.pop()
+
+        if current.type in kinds:
+            return current
+
+        # Children in document order, so the last one is popped first.
+        stack.extend(current.named_children)
 
     return None
 
 
 def _all_of_kind(node: Node, kinds: frozenset[str]) -> Iterator[Node]:
-    if node.type in kinds:
-        yield node
+    """Every node of a kind in document order, without a frame per level."""
+    stack: list[Node] = [node]
 
-    for child in node.named_children:
-        yield from _all_of_kind(child, kinds)
+    while stack:
+        current = stack.pop()
+
+        if current.type in kinds:
+            yield current
+
+        stack.extend(reversed(current.named_children))
 
 
 def _field_name(data: bytes, node: Node) -> str:
@@ -425,48 +444,70 @@ class _FileWalker:
 
         return None
 
-    def _wrapper_definition(self, node: Node) -> Node | None:
-        """The definition a decorator or template node wraps.
+    def _wrapper_definition(self, node: Node) -> tuple[Node, DefinitionRule] | None:
+        """The definition a decorator or template node wraps, and its rule.
 
-        The wrapper never contains another declaration, so the first child with a
-        rule is the one to widen: decorators and template parameters have none.
+        The wrapper never contains another declaration, so the first child that is
+        one is the one to widen: decorators and template parameters have none. The
+        child is asked through `_rule_for`, like every other node, so a rule that
+        only applies in some positions — nested definitions, rules that require a
+        field — is not applied here on weaker terms. The rule comes back with the
+        node rather than being looked up twice.
         """
         if node.type not in self._spec.wrappers:
             return None
 
-        return next((child for child in node.named_children if child.type in self._spec.definitions), None)
-
-    def _visit(self, node: Node, owner: str) -> None:
-        rule = self._rule_for(node)
-        definition = node
-        symbol_range = node
-
-        if rule is None:
-            inner = self._wrapper_definition(node)
-            if inner is None:
-                self._references(node)
-                self._imports.extend(_imports(self._data, node, self._spec))
-                for child in node.named_children:
-                    self._visit(child, owner)
-                return
-            # A decorator or a template wraps the definition it belongs to: the
-            # symbol must span the wrapper, its body must be read from the inner node.
-            rule = self._spec.definitions[inner.type]
-            definition = inner
-
-        child_owner = self._emit(rule, definition, symbol_range, owner)
-        self._references(node)
-        self._imports.extend(_imports(self._data, node, self._spec))
-
         for child in node.named_children:
-            # Nodes are handles, not stable objects, so identity is `==`, not `is`.
-            if child == definition and definition != node:
-                # The wrapper already accounted for its definition node; only its
-                # contents still need walking, as children of the emitted symbol.
-                for grandchild in child.named_children:
-                    self._visit(grandchild, child_owner)
-                continue
-            self._visit(child, child_owner)
+            rule = self._rule_for(child)
+
+            if rule is not None:
+                return child, rule
+
+        # Every wrapper a grammar produces holds the definition it wraps. A tree
+        # recovered from a syntax error could still be one without, so the walk is
+        # not allowed to assume it — but no grammar we carry produces one.
+        return None  # pragma: no cover - defensive; no grammar here produces it
+
+    def _visit(self, root: Node, owner: str) -> None:
+        """Walk the tree in document order, with a stack instead of recursion.
+
+        The same order the recursive version produced, node by node: a node is
+        handled before its children and children are visited in document order.
+        Only the shape changed, because the depth of a generated tree is the depth
+        of whatever the author nested, and no file should be able to exhaust the
+        interpreter's stack.
+        """
+        stack: list[tuple[Node, str]] = [(root, owner)]
+
+        while stack:
+            node, owner_here = stack.pop()
+            rule = self._rule_for(node)
+            definition = node
+            symbol_range = node
+
+            if rule is None:
+                wrapped = self._wrapper_definition(node)
+                if wrapped is None:
+                    self._references(node)
+                    self._imports.extend(_imports(self._data, node, self._spec))
+                    stack.extend((child, owner_here) for child in reversed(node.named_children))
+                    continue
+                # A decorator or a template wraps the definition it belongs to: the
+                # symbol spans the wrapper, its body is read from the inner node.
+                definition, rule = wrapped
+
+            child_owner = self._emit(rule, definition, symbol_range, owner_here)
+            self._references(node)
+            self._imports.extend(_imports(self._data, node, self._spec))
+
+            for child in reversed(node.named_children):
+                # Nodes are handles, not stable objects, so identity is `==`, not `is`.
+                if child == definition and definition != node:
+                    # The wrapper already accounted for its definition node; only its
+                    # contents still need walking, as children of the emitted symbol.
+                    stack.extend((grandchild, child_owner) for grandchild in reversed(child.named_children))
+                    continue
+                stack.append((child, child_owner))
 
     def _emit(self, rule: DefinitionRule, definition: Node, symbol_range: Node, owner: str) -> str:
         """Append a symbol and return the owner name its children inherit."""
@@ -554,11 +595,20 @@ class TreeSitterCodeParser:
         data = source.encode("utf-8", errors="replace")
 
         try:
-            tree = Parser(language).parse(data)
+            # The parser is held in a local until the walk is over: `Tree` keeps its
+            # language alive, but the parser it came from is cheap to keep and this
+            # is not a place to be clever about lifetimes.
+            parser = Parser(language)
+            tree = parser.parse(data)
             symbols, imports, referenced = _FileWalker(data, spec).run(tree.root_node)
         except Exception:
             # Recovery is the grammar's job, but a wheel that fails outright must
-            # still leave the review running: the file is simply unparsed.
+            # still leave the review running: the file is simply unparsed. Saying so
+            # matters — a silent `ParsedFileDTO()` is indistinguishable, at the call
+            # site, from a file with nothing in it, and that is how a deep file was
+            # skipped without anyone noticing.
+            logger.warning("could not parse %s; the file is left out of the context", path, exc_info=True)
+
             return ParsedFileDTO()
 
         return ParsedFileDTO(

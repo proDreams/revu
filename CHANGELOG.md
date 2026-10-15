@@ -40,6 +40,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inline review comment is an issue comment carrying a `pull_request_url`) plus
   `/pulls/{index}/reviews` for the review bodies.
 
+- **Deep context no longer drops a file without saying so.** The tree walk was
+  recursive, and a generated tree is as deep as its source is nested: a call chain
+  a thousand calls long exhausted the interpreter's stack, `parse` swallowed the
+  `RecursionError` and returned an empty result — indistinguishable, at the call
+  site, from a file with nothing in it. A file with 900 nested calls parsed to zero
+  symbols before this; the walk is iterative now and the same file yields its
+  function. Anything that still fails is logged with its traceback instead of
+  disappearing.
+- The walk also holds its `Parser` in a local until the walk is over. `Tree` keeps
+  its language alive, so this is belt and braces rather than a fix — but a parser is
+  cheap to keep and a use-after-free in a C extension cannot be caught.
+- A wrapper definition (a decorator, a template) is asked through the same rule
+  lookup as every other node, so `nested_inside_definition` and `requires_field` are
+  no longer skipped for it.
+
 ### Changed
 
 - A refusal by the Git host (401, 403, 404) logs what that host's own documentation
