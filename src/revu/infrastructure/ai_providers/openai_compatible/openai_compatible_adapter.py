@@ -21,6 +21,9 @@ class OpenAICompatibleAdapter:
             # our transport, so the mismatch is in the stubs, not at runtime.
             http_client=self._http_client.get_client(),  # type: ignore[arg-type]
             base_url=profile.base_url,
+            # Our HTTP client is built for the Git hosts and its timeout is far too
+            # short for a model reading a whole diff; the SDK takes its own here.
+            timeout=profile.timeout,
         )
         self.model = profile.model
 

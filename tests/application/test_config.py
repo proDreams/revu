@@ -6,6 +6,7 @@ import pytest
 
 from revu.application.config import load_log_settings, load_settings
 from revu.application.entities.config import (
+    DEFAULT_AI_TIMEOUT,
     DEFAULT_APP_PORT,
     DEFAULT_LOG_DIR,
     DEFAULT_MAX_CONCURRENT_REVIEWS,
@@ -415,3 +416,19 @@ def test_a_budget_that_is_not_a_positive_number_is_rejected(key):
         load_settings(raw)
 
     assert f"{key} must be a positive integer" in str(exc_info.value)
+
+
+def test_an_ai_profile_may_take_longer_than_the_git_client():
+    raw = make_raw_settings()
+    raw["AI_PROVIDERS"]["default"]["AI_PROVIDER_TIMEOUT"] = 900
+
+    settings = load_settings(raw)
+
+    assert settings.ai_profiles["default"].timeout == 900.0
+
+
+def test_the_ai_timeout_defaults_to_what_a_model_needs():
+    """Thirty seconds is a Git call that never answered; a model reads a whole diff."""
+    settings = load_settings(make_raw_settings())
+
+    assert settings.ai_profiles["default"].timeout == DEFAULT_AI_TIMEOUT

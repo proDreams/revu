@@ -21,6 +21,7 @@ from dynaconf import Dynaconf
 
 from revu.application.entities.config import (
     CONNECTION_KEY_RE,
+    DEFAULT_AI_TIMEOUT,
     DEFAULT_APP_HOST,
     DEFAULT_APP_PORT,
     DEFAULT_CONTEXT_DEPTH,
@@ -167,6 +168,9 @@ def _parse_ai_profiles(raw: Mapping[str, Any]) -> dict[str, AIProfileConfig]:
             base_url=_text(body, path, "AI_PROVIDER_BASE_URL", required=False),
             scope=_text(body, path, "AI_PROVIDER_SCOPE", required=False),
             folder_id=_text(body, path, "AI_PROVIDER_FOLDER_ID", required=False),
+            # How long one request to the model may take. A slow local model wants
+            # more than the Git client's thirty seconds.
+            timeout=float(body.get("AI_PROVIDER_TIMEOUT") or DEFAULT_AI_TIMEOUT),
         )
 
     return profiles

@@ -50,6 +50,39 @@ SKIPPED_SUFFIXES = (".min.js", ".min.css", ".map", ".lock", ".snap")
 SKIPPED_NAMES = (".env", "id_rsa", "id_ed25519", ".npmrc", ".pypirc", ".git-credentials")
 SKIPPED_NAME_PARTS = ("secret", "credential", "password", "private_key")
 
+#: Files that are data rather than code. A changed one belongs in the diff, and
+#: nowhere else: no grammar parses it, nothing imports it, and hunting for its tests
+#: asks the host for paths that cannot exist. One brand-kit pull request cost forty
+#: 404s that way — for icons, marks and font assets nobody is going to review.
+DATA_SUFFIXES = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".avif",
+    ".bmp",
+    ".ico",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".whl",
+    ".so",
+    ".dylib",
+    ".dll",
+    ".mp3",
+    ".mp4",
+    ".webm",
+    ".mov",
+)
+
 #: Extensions a module specifier may resolve to, in the order they are tried.
 MODULE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rb", ".php", ".java")
 
@@ -226,7 +259,9 @@ class ContextBuilder:
         # The files with most changes first: when the budget runs out it runs out on
         # the least significant part of the pull request, not on the largest file.
         for file in sorted(changed, key=lambda item: item.changes, reverse=True):
-            if skipped_path(file.path):
+            if skipped_path(file.path) or data_file(file.path):
+                # A changed image or font is context for nothing: the diff already
+                # carries it, and probing around it only produces 404s.
                 continue
 
             source = await self._read(port, request, file.path, gathering)
@@ -508,6 +543,11 @@ def _ranges(lines: list[int]) -> tuple[tuple[int, int], ...]:
     ranges.append((first, previous))
 
     return tuple(ranges)
+
+
+def data_file(path: str) -> bool:
+    """Whether a path holds data rather than code: readable in a diff, useless as context."""
+    return path.casefold().endswith(DATA_SUFFIXES)
 
 
 def skipped_path(path: str) -> bool:
