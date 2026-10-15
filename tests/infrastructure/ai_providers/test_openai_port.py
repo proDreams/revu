@@ -154,8 +154,8 @@ async def test_without_a_system_prompt_the_builtin_prompt_is_used():
     await port.get_comment_response(make_task(system_prompt=None))
 
     instructions = adapter.get_chat_response.await_args.kwargs["instructions"]
-    assert instructions.lstrip().startswith("Ты — опытный инженер-программист")
-    assert "Ты — опытный инженер-программист" in instructions
+    assert instructions.lstrip().startswith("You are an experienced software engineer")
+    assert "You are an experienced software engineer" in instructions
 
 
 def test_a_gitlab_comment_needs_a_line():

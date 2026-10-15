@@ -42,6 +42,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code is skipped now — the diff still carries it — and a 404 on a probe is logged at
   debug level instead of as a warning, because for a probe a miss is an answer.
 
+### Changed
+
+- **The prompts are English now, and a third smaller.** Tokenizers spend noticeably more
+  of them on Russian Cyrillic than on the same content in English, and the instructions
+  travel with every review: 22 648 characters became 13 930, with the reviewer's criteria
+  stated once instead of twice across the two modes. The *answer* is still Russian — that
+  is what a person reads — and the rule saying so lives in the prompts themselves, with a
+  test that fails if a later edit drops it. Rereading them also produced two things worth
+  having: a review no longer spells out what the project's own linters and formatters
+  already enforce (formatting, import order, line length), because the pipeline reports
+  those and a review that repeats them is noise; and both modes now say plainly that a
+  change which is fine needs no comment at all. What was worth keeping was kept — the
+  diff handed to the model carries a line number on every line and the prompt tells it to
+  copy those numbers rather than count, which is what keeps a comment on the line it was
+  written about, and the data block stays fenced with an instruction to treat everything
+  inside it as material rather than as orders.
+
 ## [2.4.1] - 2026-10-15
 
 ### Fixed
