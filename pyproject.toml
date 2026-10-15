@@ -64,7 +64,10 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
+# `uv_build` ships with uv, and uv refuses a requirement its own version does not
+# satisfy: `>=0.13,<0.14` is what the image's `uv` (pinned in the Dockerfile) is.
+# The pin has to move together with that image tag.
+requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
 
 [project.scripts]

@@ -9,9 +9,12 @@ RUN apt-get update \
 # `git` is what a CI run reads the change with: the checkout is already on disk,
 # so a review in a pipeline asks the forge for nothing.
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-# Copy the `uv` and `uvx` executables from the latest official uv container
-# into /bin, making them available globally in this image.
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /uvx /bin/
+# Copy the `uv` and `uvx` executables from the official uv container into /bin.
+# Pinned rather than `latest`: uv builds the project itself, so a new uv can change
+# how this image builds without a single line here changing — which is exactly what
+# happened, from `hatchling` to `uv_build` and back through a version warning.
+# Moving this tag means moving the `uv_build` pin in pyproject.toml with it.
 
 WORKDIR /code
 # Set the working directory to `/code` inside the container.
@@ -19,9 +22,11 @@ WORKDIR /code
 COPY pyproject.toml uv.lock README.md /code/
 # Copy the project metadata and README into the container.
 
-RUN uv sync --locked
-# Install the Python dependencies exactly as pinned in uv.lock using uv.
-# Creates a virtual environment at `/code/.venv` with reproducible versions.
+RUN uv sync --locked --no-install-project
+# Install the third-party dependencies exactly as pinned in uv.lock, and nothing
+# else. `--no-install-project` is what makes this layer cacheable on the lock alone:
+# the project's own source is not here yet, and building it would need
+# `src/revu/__init__.py` — which is the error this step used to fail with.
 
 RUN curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" \
     -o /tmp/russian_ca.pem \
@@ -30,6 +35,10 @@ RUN curl -k "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" \
 
 COPY . /code/
 # Copy the rest of the application source code into the container.
+
+RUN uv sync --locked
+# Install the project itself, now that its source is here. Only this one package is
+# built, so the step is quick and the dependencies keep their cached layer.
 
 ENV PATH="/code/.venv/bin:$PATH"
 # The console scripts live in the virtual environment `uv sync` created, so `revu`
