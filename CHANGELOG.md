@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] - 2026-10-15
+
+### Fixed
+
+- **A model answer has a deadline now, not just a socket timeout.** `AI_PROVIDER_TIMEOUT`
+  was handed to the HTTP client, whose read timeout measures the *gap* between two
+  chunks — so a model that keeps generating never trips it, and a review of a
+  nineteen-file pull request sat for minutes with its headers already in the log, looking
+  answered. A second review in the same log finished in seventy-eight seconds, which is
+  what a slow model looks like when it does finish. The whole request is now under that
+  timeout, generation included: a model that will not stop is cut off and asked again,
+  which also makes "the attempt count times the timeout" the real worst case rather than
+  a number nothing enforced.
+- **Exceeding that deadline is retried once, not to the full count.** Running out of
+  time is about the request rather than about luck: the same prompt on the same model
+  takes the same minutes again. Five attempts of five minutes is twenty-five minutes
+  spent on a review that was not going to arrive, at the price of the whole prompt each
+  time, so a deadline gets one more attempt. The full `AI_PROVIDER_RETRIES` still applies
+  to failures that carried no verdict at all — a broken connection, a rate limit, a
+  server error.
+
+### Changed
+
+- **A review says when it is waiting for the model.** The request line in the log arrives
+  with the response *headers*, not with the answer — httpx logs before it reads the body —
+  so a log can show a `200` in under a second and then look dead for minutes while the
+  model is still generating. That is exactly how a fifty-eight file pull request read as
+  stuck when nothing at all was wrong with it. The line before the call names the pull
+  request, the connection, the mode and the size of the prompt, so the wait has a
+  beginning and a number attached to it.
+
 ## [2.4.2] - 2026-10-15
 
 ### Fixed
@@ -59,23 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written about, and the data block stays fenced with an instruction to treat everything
   inside it as material rather than as orders.
 
-- **A review says when it is waiting for the model.** The request line in the log arrives
-  with the response *headers*, not with the answer — httpx logs before it reads the body —
-  so a log can show a `200` in under a second and then look dead for minutes while the
-  model is still generating. That is exactly how a fifty-eight file pull request read as
-  stuck when nothing at all was wrong with it. The line before the call names the pull
-  request, the connection, the mode and the size of the prompt, so the wait has a
-  beginning and a number attached to it.
-
-- **A model answer has a deadline now, not just a socket timeout.** `AI_PROVIDER_TIMEOUT`
-  was handed to the HTTP client, whose read timeout measures the *gap* between two
-  chunks — so a model that keeps generating never trips it, and a review of a
-  nineteen-file pull request sat for minutes with its headers already in the log, looking
-  answered. A second review in the same log finished in seventy-eight seconds, which is
-  what a slow model looks like when it does finish. The whole request is now under that
-  timeout, generation included: a model that will not stop is cut off and asked again,
-  which also makes "the attempt count times the timeout" the real worst case rather than
-  a number nothing enforced.
 
 ## [2.4.1] - 2026-10-15
 
@@ -399,6 +413,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.4.3]: https://github.com/proDreams/revu/compare/2.4.2...2.4.3
 [2.4.2]: https://github.com/proDreams/revu/compare/2.4.1...2.4.2
 [2.4.1]: https://github.com/proDreams/revu/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0

@@ -226,7 +226,7 @@ A few steps are enough to get going:
             - `AI_PROVIDER_API_KEY` — the provider's API key
             - `AI_PROVIDER_MODEL` — the model to use (for example `gpt-4o-mini`)
             - `AI_PROVIDER_TIMEOUT` — how long the WHOLE request to the model may take, generation included, in seconds (`300` by default; the Git hosts' timeout does not apply to the model, and httpx's would not do — it measures the gaps between chunks, not the total)
-            - `AI_PROVIDER_RETRIES` — how many times to repeat a request the model did not answer (`4` by default, five attempts; only failures that carried no answer are repeated)
+            - `AI_PROVIDER_RETRIES` — how many times to repeat a request the model did not answer (`4` by default, five attempts; only failures that carried no answer are repeated); exceeding `AI_PROVIDER_TIMEOUT` is repeated only once
             - `AI_PROVIDER_BASE_URL` — **required** for `openai_compatible`: the URL of the
               OpenAI-compatible provider
             - `AI_PROVIDER_SCOPE` — GigaChat only. Chooses the GigaChat version; it is
@@ -622,7 +622,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.1 review
+            ghcr.io/prodreams/revu:2.4.3 review
 ```
 
 ### GitLab CI
@@ -632,7 +632,7 @@ Here a container is the native model, and `CI_JOB_TOKEN` is available straight a
 ```yaml
 revu:
   stage: test
-  image: ghcr.io/prodreams/revu:2.4.1
+  image: ghcr.io/prodreams/revu:2.4.3
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -689,7 +689,7 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
             -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.4.1 review
+            ghcr.io/prodreams/revu:2.4.3 review
 ```
 
 ### Environment variables
