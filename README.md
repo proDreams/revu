@@ -372,6 +372,21 @@ GIT_PROVIDERS:
 Накладные расходы: один контейнер, один конфиг, один набор логов — вместо отдельного инстанса на каждого
 провайдера.
 
+### Какие события включить в вебхуке
+
+У каждого хоста своя настройка, и у Gitea легко ошибиться: «Запрос на слияние» покрывает только
+открытие, редактирование и закрытие, а **пуш новых коммитов в PR — это отдельное событие**.
+
+| Хост | Что включить |
+|---|---|
+| **Gitea** | «Запрос на слияние» **и** «Синхронизация запроса на слияние» (Pull request synchronized). Второе — это и есть пуш в ветку PR |
+| **GitHub** | `Pull requests` — новых коммитов хватает: `synchronize` приходит в том же событии |
+| **GitLab** | `Merge request events` |
+| **Bitbucket** | `pr:opened` и `pr:from_ref_updated` |
+
+Остальные доставки ReVu подтверждает (`200`) и игнорирует, поэтому лишние галочки не вредят. Но без
+«синхронизации» в Gitea ревью приходит ровно один раз — на открытие PR.
+
 ### Повторное ревью
 
 Когда автор отправляет правки, ReVu не начинает с чистого листа. Перед ревью она читает то, что уже есть
@@ -571,7 +586,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.5.0 review
+            ghcr.io/prodreams/revu:2.5.1 review
 ```
 
 ### GitLab CI
@@ -581,7 +596,7 @@ jobs:
 ```yaml
 revu:
   stage: test
-  image: ghcr.io/prodreams/revu:2.5.0
+  image: ghcr.io/prodreams/revu:2.5.1
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -636,7 +651,7 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
             -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.5.0 review
+            ghcr.io/prodreams/revu:2.5.1 review
 ```
 
 ### Переменные окружения

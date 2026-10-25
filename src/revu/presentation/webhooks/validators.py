@@ -38,6 +38,13 @@ logger = get_logger(name=__name__)
 
 # Delivery kinds each git host distinguishes for pull requests.
 PULL_REQUEST_EVENT = "pull_request"
+
+#: Gitea reports commits pushed to a pull request as a delivery kind of its own, with
+#: `action: synchronized` inside. Its `pull_request` delivery covers opening, editing
+#: and closing only — which is why a webhook with just that one ticked never fires
+#: again once the author pushes to the branch.
+GITEA_SYNC_EVENT = "pull_request_sync"
+GITEA_PR_EVENTS = (PULL_REQUEST_EVENT, GITEA_SYNC_EVENT)
 GITHUB_EVENT_HEADER = "x-github-event"
 GITEA_EVENT_HEADER = "x-gitea-event"
 GITLAB_EVENT_HEADER = "x-gitlab-event"
@@ -195,7 +202,11 @@ async def _read_verified_body(request: Request, tenant: TenantContext) -> bytes:
     return body
 
 
-def _require_event(request: Request, header_name: str, expected: str = PULL_REQUEST_EVENT) -> None:
+def _require_event(
+    request: Request,
+    header_name: str,
+    expected: str | tuple[str, ...] = PULL_REQUEST_EVENT,
+) -> None:
     """Ignore deliveries that are not the event this connection reacts to.
 
     Hosts deliver far more than pull requests to a single webhook URL; those get
@@ -207,7 +218,9 @@ def _require_event(request: Request, header_name: str, expected: str = PULL_REQU
         # Sender doesn't send the header at all — keep legacy behaviour.
         return
 
-    if event.strip().casefold() != expected.casefold():
+    accepted = (expected,) if isinstance(expected, str) else expected
+
+    if event.strip().casefold() not in {value.casefold() for value in accepted}:
         raise ReviewNotNeededError()
 
 
@@ -299,7 +312,7 @@ async def parse_webhook_event(
             return github_to_domain(event)
 
         case GitProviderEnum.GITEA:
-            _require_event(request, GITEA_EVENT_HEADER)
+            _require_event(request, GITEA_EVENT_HEADER, GITEA_PR_EVENTS)
             event = _validate(GiteaPullRequestWebhook, payload, connection.key, "Gitea")
             _require_review_action(payload)
 
