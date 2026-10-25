@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] - 2026-10-15
+
+### Fixed
+
+- **A Gitea review now runs again when commits are pushed to the pull request.** Gitea
+  reports that as its own delivery kind, `pull_request_sync` with `action: synchronized`,
+  while the validator accepted only `pull_request` — so the delivery was answered `200`
+  and dropped, and a webhook with just "Pull requests" ticked never fired again after the
+  first review. Both kinds are accepted now; the other pull request deliveries still stay
+  quiet. The README gained the table nobody had written: which events each host needs, and
+  that "Pull requests" alone is not enough in Gitea.
+
 ## [2.5.0] - 2026-10-15
 
 ### Added
@@ -29,16 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own terms — ReVu's findings only on a follow-up, when there is something to verify, and
   the discussion always, because a reviewer who cannot see it repeats what was settled
   there. The instructions say so too, in both the criteria and the follow-up prompt.
-
-### Fixed
-
-- **A Gitea review now runs again when commits are pushed to the pull request.** Gitea
-  reports that as its own delivery kind, `pull_request_sync` with `action: synchronized`,
-  while the validator accepted only `pull_request` — so the delivery was answered `200`
-  and dropped, and a webhook with just "Pull requests" ticked never fired again after the
-  first review. Both kinds are accepted now; the other pull request deliveries still stay
-  quiet. The README gained the table nobody had written: which events each host needs, and
-  that "Pull requests" alone is not enough in Gitea.
 
 ## [2.4.3] - 2026-10-15
 
@@ -448,7 +450,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
-[2.5.0]: https://github.com/proDreams/revu/compare/2.4.2...2.5.0
+[2.5.1]: https://github.com/proDreams/revu/compare/2.5.0...2.5.1
+[2.5.0]: https://github.com/proDreams/revu/compare/2.4.3...2.5.0
+[2.4.3]: https://github.com/proDreams/revu/compare/2.4.2...2.4.3
 [2.4.2]: https://github.com/proDreams/revu/compare/2.4.1...2.4.2
 [2.4.1]: https://github.com/proDreams/revu/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/proDreams/revu/compare/2.3.0...2.4.0

@@ -586,7 +586,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GITHUB_TOKEN -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.5.0 review
+            ghcr.io/prodreams/revu:2.5.1 review
 ```
 
 ### GitLab CI
@@ -596,7 +596,7 @@ jobs:
 ```yaml
 revu:
   stage: test
-  image: ghcr.io/prodreams/revu:2.5.0
+  image: ghcr.io/prodreams/revu:2.5.1
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
@@ -651,7 +651,7 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo \
             -e GIT_PROVIDER -e GIT_PROVIDER_URL -e GITHUB_TOKEN \
             -e AI_PROVIDER_API_KEY -e AI_PROVIDER_MODEL \
-            ghcr.io/prodreams/revu:2.5.0 review
+            ghcr.io/prodreams/revu:2.5.1 review
 ```
 
 ### Переменные окружения
