@@ -412,6 +412,21 @@ GIT_PROVIDERS:
 The overhead is one container, one configuration and one set of logs, rather than a
 separate instance per provider.
 
+### Which events to enable on the webhook
+
+Each host spells this differently, and Gitea is the easy one to get wrong: **Pull requests**
+covers opening, editing and closing only — a push to the branch is a separate event.
+
+| Host | What to enable |
+|---|---|
+| **Gitea** | "Pull requests" **and** "Pull request synchronized". The second one is what a push to the pull request branch sends |
+| **GitHub** | `Pull requests` — new commits are enough, `synchronize` arrives inside the same event |
+| **GitLab** | `Merge request events` |
+| **Bitbucket** | `pr:opened` and `pr:from_ref_updated` |
+
+Every other delivery is answered `200` and ignored, so extra ticks do no harm. Without the
+synchronized event in Gitea, a review happens exactly once — when the pull request opens.
+
 ### Repeated reviews
 
 When the author pushes fixes, ReVu does not start from a blank page. Before reviewing it

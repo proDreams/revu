@@ -249,3 +249,35 @@ async def test_an_unsupported_host_is_reported(make_tenant):
 
     with pytest.raises(UnknownGitProviderException):
         await parse_webhook_event(request=request, tenant=tenant)
+
+
+async def test_a_gitea_delivery_for_new_commits_is_reviewed(make_tenant):
+    """Gitea reports a push to a pull request as `pull_request_sync`, `synchronized`.
+
+    Its `pull_request` delivery only covers opened, edited and closed, so a webhook that
+    ticks that one alone never fires again after the author pushes — which is exactly
+    what happened in the field. Both kinds are accepted now; the action gate decides
+    whether the delivery is a review, and `synchronized` is one.
+    """
+    payload = {**VALID_WEBHOOK_PAYLOAD, "action": "synchronized"}
+    body = json.dumps(payload).encode()
+    tenant = make_tenant(make_connection(key="gitea-int", host=GitProviderEnum.GITEA, secret_token=GITEA_SECRET))
+    request = await make_request(
+        body=body,
+        headers={**_sign(body, GITEA_SECRET), "x-gitea-event": "pull_request_sync"},
+    )
+
+    assert isinstance(await parse_webhook_event(request=request, tenant=tenant), PullRequestEventDTO)
+
+
+async def test_a_gitea_comment_delivery_is_not_a_review(make_tenant):
+    """The other pull request deliveries stay quiet: they are not about new code."""
+    body = json.dumps(VALID_WEBHOOK_PAYLOAD).encode()
+    tenant = make_tenant(make_connection(key="gitea-int", host=GitProviderEnum.GITEA, secret_token=GITEA_SECRET))
+    request = await make_request(
+        body=body,
+        headers={**_sign(body, GITEA_SECRET), "x-gitea-event": "pull_request_comment"},
+    )
+
+    with pytest.raises(ReviewNotNeededError):
+        await parse_webhook_event(request=request, tenant=tenant)

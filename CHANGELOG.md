@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the discussion always, because a reviewer who cannot see it repeats what was settled
   there. The instructions say so too, in both the criteria and the follow-up prompt.
 
+### Fixed
+
+- **A Gitea review now runs again when commits are pushed to the pull request.** Gitea
+  reports that as its own delivery kind, `pull_request_sync` with `action: synchronized`,
+  while the validator accepted only `pull_request` — so the delivery was answered `200`
+  and dropped, and a webhook with just "Pull requests" ticked never fired again after the
+  first review. Both kinds are accepted now; the other pull request deliveries still stay
+  quiet. The README gained the table nobody had written: which events each host needs, and
+  that "Pull requests" alone is not enough in Gitea.
+
 ## [2.4.3] - 2026-10-15
 
 ### Fixed
