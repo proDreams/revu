@@ -13,6 +13,7 @@ from revu.application.services.context_builder import (
     data_file,
     project_structure,
     resolve_module,
+    reviewable_changes,
     skipped_path,
 )
 from revu.application.services.context_builder import test_candidates as find_test_candidates
@@ -136,6 +137,21 @@ def test_a_deletion_still_reports_where_it_happened():
 """
 
     assert changed_files(diff)[0].ranges == ((10, 10),)
+
+
+IMAGE_DIFF = """diff --git a/logo.png b/logo.png
+--- a/logo.png
++++ b/logo.png
+Binary files a/logo.png and b/logo.png differ
+"""
+
+
+def test_a_data_only_diff_has_nothing_to_review():
+    assert reviewable_changes(IMAGE_DIFF) == ()
+
+
+def test_a_code_change_next_to_an_image_is_still_reviewed():
+    assert [file.path for file in reviewable_changes(IMAGE_DIFF + DIFF)] == ["src/app/service.py"]
 
 
 # ── the three kinds of context ─────────────────────────────────────────────

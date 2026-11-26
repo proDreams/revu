@@ -39,6 +39,16 @@ def json_diff_to_unified(diffs: object) -> str:
         destination = DEV_NULL if file_diff.get("deleted_file") else f"b/{new_path}"
 
         lines.append(f"diff --git a/{old_path or new_path} b/{new_path or old_path}")
+
+        # The mode line is what tells a unified-diff parser that the missing side
+        # is `/dev/null` rather than a path that disagrees with the `diff --git`
+        # header. Without it, a deleted file ends in `+++ /dev/null` that unidiff
+        # rejects as "Target without source".
+        if file_diff.get("new_file"):
+            lines.append("new file mode 100644")
+        elif file_diff.get("deleted_file"):
+            lines.append("deleted file mode 100644")
+
         lines.append(f"--- {source}")
         lines.append(f"+++ {destination}")
         lines.append(text.rstrip("\n"))

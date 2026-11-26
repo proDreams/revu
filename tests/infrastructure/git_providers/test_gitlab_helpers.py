@@ -1,6 +1,7 @@
 """The GitLab diff payload carries only hunks; a unified diff needs more."""
 
 import pytest
+from unidiff import PatchSet
 
 from revu.infrastructure.git_providers.gitlab.helpers import json_diff_to_unified
 
@@ -24,6 +25,7 @@ def test_a_new_file_has_no_source_path():
         [{"old_path": "new.py", "new_path": "new.py", "diff": HUNKS, "new_file": True}],
     )
 
+    assert "new file mode 100644" in unified
     assert "--- /dev/null" in unified
     assert "+++ b/new.py" in unified
 
@@ -33,8 +35,22 @@ def test_a_deleted_file_has_no_target_path():
         [{"old_path": "gone.py", "new_path": "gone.py", "diff": HUNKS, "deleted_file": True}],
     )
 
+    assert "deleted file mode 100644" in unified
     assert "--- a/gone.py" in unified
     assert "+++ /dev/null" in unified
+
+
+@pytest.mark.parametrize("kind", ["new_file", "deleted_file"])
+def test_a_created_or_deleted_file_is_a_parseable_unified_diff(kind):
+    """Without the mode line unidiff rejects ``+++ /dev/null`` as target-less."""
+    unified = json_diff_to_unified(
+        [{"old_path": "image.png", "new_path": "image.png", "diff": HUNKS, kind: True}],
+    )
+
+    patched = PatchSet(unified)[0]
+
+    assert patched.path == "image.png"
+    assert (patched.is_added_file if kind == "new_file" else patched.is_removed_file) is True
 
 
 def test_a_renamed_file_keeps_both_paths():

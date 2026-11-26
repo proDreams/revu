@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2026-11-26
+
+### Fixed
+
+- **A merge request that changes only images no longer fails the review.** GitLab renders
+  a deleted file as `+++ /dev/null`, and the unified diff built from its `/diffs` payload
+  lacked the `deleted file mode` line that tells a parser the missing side is intentional:
+  `unidiff` rejected it as `Target without source`, and the merge request got a "review
+  could not be completed" notice instead. The GitLab diff now carries the mode line for
+  created and deleted files, so it parses like a real `git diff`. On top of that, a change
+  with no code at all — images, fonts, archives, generated files or secrets — is skipped
+  before the model is asked: nothing is sent, nothing is published, and the log says why.
+
 ## [2.5.1] - 2026-10-15
 
 ### Fixed
@@ -450,6 +463,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provider) now that it serves every connection rather than one webhook; the
   exception and review-mode modules were renamed to match.
 
+[2.5.2]: https://github.com/proDreams/revu/compare/2.5.1...2.5.2
 [2.5.1]: https://github.com/proDreams/revu/compare/2.5.0...2.5.1
 [2.5.0]: https://github.com/proDreams/revu/compare/2.4.3...2.5.0
 [2.4.3]: https://github.com/proDreams/revu/compare/2.4.2...2.4.3

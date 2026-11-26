@@ -41,6 +41,19 @@ DIFF = """diff --git a/app.py b/app.py
 +new line
 """
 
+IMAGE_DIFF = """diff --git a/logo.png b/logo.png
+--- a/logo.png
++++ b/logo.png
+Binary files a/logo.png and b/logo.png differ
+"""
+
+DELETED_IMAGE_DIFF = """diff --git a/old-logo.png b/old-logo.png
+deleted file mode 100644
+--- a/old-logo.png
++++ /dev/null
+Binary files a/old-logo.png and /dev/null differ
+"""
+
 COMMIT_SHA = "e0a85d5a2275d8e85cbafcc0ec730e51266c1925"
 
 REQUEST = ReviewRequest(
@@ -276,3 +289,35 @@ async def test_the_wait_for_the_model_is_visible_in_the_log(runner, reader, publ
         )
 
     assert f"asking the model about {REQUEST.repo}#{REQUEST.number}" in caplog.text
+
+
+@pytest.mark.parametrize("diff", [IMAGE_DIFF, DELETED_IMAGE_DIFF, ""])
+async def test_a_diff_without_code_is_skipped(
+    runner,
+    reader,
+    publisher,
+    ai_port,
+    context_builder,
+    caplog,
+    diff,
+):
+    """A pull request of images has nothing to review, so nothing is asked."""
+    reader.fetch_diff.return_value = diff
+
+    with caplog.at_level("INFO"):
+        outcome = await runner.run(
+            reader=reader,
+            publisher=publisher,
+            ai_port=ai_port,
+            config=make_connection(review_mode=ReviewModeEnum.INLINE),
+            request=REQUEST,
+        )
+
+    assert outcome.skipped is True
+    assert (outcome.published, outcome.findings) == (0, 0)
+    ai_port.get_inline_response.assert_not_awaited()
+    ai_port.get_comment_response.assert_not_awaited()
+    publisher.send_inline.assert_not_awaited()
+    publisher.send_comment.assert_not_awaited()
+    context_builder.build.assert_not_awaited()
+    assert f"skipping review of {REQUEST.repo}#{REQUEST.number}" in caplog.text

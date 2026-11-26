@@ -23,7 +23,11 @@ from revu.application.entities.enums.review_mode_enums import ReviewModeEnum
 from revu.application.entities.exceptions.review_service_exceptions import (
     ReviewModeException,
 )
-from revu.application.services.context_builder import ContextBuilder, ContextRequest
+from revu.application.services.context_builder import (
+    ContextBuilder,
+    ContextRequest,
+    reviewable_changes,
+)
 from revu.application.services.diff_anchors import DiffAnchors, drop_unanchored_comments
 from revu.domain.entities.dto.ai_provider_dto import ReviewResponseDTO
 from revu.domain.entities.dto.code_context_dto import CHARS_PER_TOKEN, CodeContextDTO
@@ -65,6 +69,9 @@ class ReviewOutcome:
     #: Whether this was a follow-up to an earlier review.
     re_review: bool
     code_context: CodeContextDTO
+    #: Whether the change had nothing a review could look at (images, generated
+    #: files, secrets), so no model was asked and nothing was published.
+    skipped: bool = False
 
 
 class ReviewRunner:
@@ -84,6 +91,24 @@ class ReviewRunner:
     ) -> ReviewOutcome:
         """Review one change and publish the result."""
         diff = await reader.fetch_diff(repo=request.repo, index=request.number)
+
+        if not reviewable_changes(diff):
+            logger.info(
+                "skipping review of %s#%s on connection %s: the diff has no code to review",
+                request.repo,
+                request.number,
+                config.key,
+            )
+
+            return ReviewOutcome(
+                mode=config.review_mode,
+                published=0,
+                findings=0,
+                dropped=0,
+                re_review=False,
+                code_context=CodeContextDTO(),
+                skipped=True,
+            )
 
         context = await self._fetch_review_context(reader, config, request)
         code_context = await self._fetch_code_context(reader, config, request, diff)

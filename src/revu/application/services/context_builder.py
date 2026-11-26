@@ -557,6 +557,17 @@ def changed_files(diff: str) -> tuple[ChangedFile, ...]:
     return tuple(files)
 
 
+def reviewable_changes(diff: str) -> tuple[ChangedFile, ...]:
+    """The changed files a review has anything to look at.
+
+    A diff of images, fonts or archives carries no code, and asking a model about
+    it only invites a guess. Generated files and secrets are left out for the same
+    reason. When nothing else is left, the pull request is skipped entirely rather
+    than reviewed as if it were empty.
+    """
+    return tuple(file for file in changed_files(diff) if not data_file(file.path) and not skipped_path(file.path))
+
+
 def _ranges(lines: list[int]) -> tuple[tuple[int, int], ...]:
     """Compress line numbers into the ranges they form."""
     if not lines:
